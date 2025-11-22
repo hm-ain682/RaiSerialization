@@ -24,8 +24,8 @@ module;
 import rai.json.json_writer;
 import rai.json.json_parser;
 import rai.json.json_token_manager;
-import rai.compiler.io.sorted_field_map;
-import rai.compiler.io.enum_converter;
+import rai.json.sorted_field_map;
+import rai.json.enum_converter;
 export module rai.json.json_binding;
 
 namespace rai::json {

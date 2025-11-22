@@ -7,7 +7,7 @@ module;
 #include <stdexcept>
 #include <vector>
 
-export module rai.compiler.io.reading_ahead_double_buffer;
+export module rai.json.reading_ahead_double_buffer;
 
 export namespace rai::json {
 

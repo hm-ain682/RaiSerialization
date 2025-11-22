@@ -11,10 +11,10 @@ module;
 #include <vector>
 #include <cassert>
 
-export module rai.compiler.io.parallel_input_stream_source;
-import rai.compiler.io.reading_ahead_double_buffer;
-import rai.compiler.io.reading_ahead_buffer;
-import rai.compiler.common.thread_pool;
+export module rai.json.parallel_input_stream_source;
+import rai.json.reading_ahead_double_buffer;
+import rai.json.reading_ahead_buffer;
+import rai.common.thread_pool;
 
 export namespace rai::json {
 

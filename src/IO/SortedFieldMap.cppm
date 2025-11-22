@@ -9,7 +9,7 @@ module;
 #include <cstring>
 #include <cstdint>
 
-export module rai.compiler.io.sorted_field_map;
+export module rai.json.sorted_field_map;
 
 export namespace rai::json {
 

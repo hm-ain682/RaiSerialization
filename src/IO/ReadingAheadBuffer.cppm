@@ -5,7 +5,7 @@ module;
 #include <vector>
 #include <cassert>
 
-export module rai.compiler.io.reading_ahead_buffer;
+export module rai.json.reading_ahead_buffer;
 
 export namespace rai::json {
 

@@ -8,9 +8,9 @@ module;
 #include <stdexcept>
 #include <utility>
 
-export module rai.compiler.io.enum_converter;
+export module rai.json.enum_converter;
 
-import rai.compiler.io.sorted_field_map;
+import rai.json.sorted_field_map;
 
 export namespace rai::json {
 
