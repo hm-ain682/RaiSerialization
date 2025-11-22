@@ -1,0 +1,62 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 28,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "clang-ninja",
+      "displayName": "Configure with clang/clang++ and Ninja",
+      "description": "Use LLVM clang/clang++ toolchain with Ninja generator",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/clang-ninja",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "RAIJSON_BUILD_TESTS": "ON",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "clang-cl-ninja",
+      "displayName": "Configure with clang-cl (MSVC ABI) and Ninja",
+      "description": "Use clang-cl for MSVC-compatible builds (requires MSVC headers/libs) with Ninja generator",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/clang-cl-ninja",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang-cl",
+        "CMAKE_CXX_COMPILER": "clang-cl",
+        "RAIJSON_BUILD_TESTS": "ON",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "clang-ninja-debug",
+      "configurePreset": "clang-ninja",
+      "displayName": "Build (clang, Ninja) - Debug",
+      "configuration": "Debug"
+    },
+    {
+      "name": "clang-ninja-release",
+      "configurePreset": "clang-ninja",
+      "displayName": "Build (clang, Ninja) - Release",
+      "configuration": "Release"
+    },
+    {
+      "name": "clang-cl-ninja-debug",
+      "configurePreset": "clang-cl-ninja",
+      "displayName": "Build (clang-cl, Ninja) - Debug",
+      "configuration": "Debug"
+    },
+    {
+      "name": "clang-cl-ninja-release",
+      "configurePreset": "clang-cl-ninja",
+      "displayName": "Build (clang-cl, Ninja) - Release",
+      "configuration": "Release"
+    }
+  ]
+}

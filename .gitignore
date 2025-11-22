@@ -1,0 +1,100 @@
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Linker files
+*.ilk
+
+# Debugger Files
+*.pdb
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# debug information files
+*.dwo
+
+# Project-specific ignores
+# Build directories
+/build/
+/**/build/
+
+# CMake and Ninja generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+build.ninja
+rules.ninja
+TargetDirectories.txt
+compile_commands.json
+*.ninja
+
+# VS Code / Visual Studio
+.vscode/*
+!.vscode/c_cpp_properties.json
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/tasks.json
+.vs/
+*.sln
+*.vcxproj*
+*.user
+*.suo
+
+# Compiler/linker outputs
+*.o
+*.obj
+*.lib
+*.a
+*.dll
+*.exe
+*.pdb
+*.ilk
+*.exp
+
+# Clang module cache / PCMs
+modules-cache/
+**/modules-cache/
+*.pcm
+*.modmap
+*.module
+
+# Misc
+*.log
+*.tmp
+*.bak
+.DS_Store
+Thumbs.db
+
+# Editor temp
+*.swp
+*~
+
+# Extension cache
+**/.cache/
