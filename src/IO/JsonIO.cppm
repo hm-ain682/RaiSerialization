@@ -21,7 +21,7 @@ import rai.json.json_tokenizer;
 import rai.json.json_token_manager;
 import rai.json.reading_ahead_buffer;
 import rai.json.parallel_input_stream_source;
-import rai.compiler.common.thread_pool;
+import rai.common.thread_pool;
 
 namespace rai::json {
 

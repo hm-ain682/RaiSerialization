@@ -34,10 +34,10 @@ foreach(gtest_target gtest gtest_main gmock gmock_main)
 endforeach()
 
 # Build the more extensive tests
-add_executable(JsonTest JsonTest.cpp)
-target_link_libraries(JsonTest PRIVATE RaiJson::RaiJson gtest_main)
-add_test(NAME JsonTest COMMAND JsonTest)
+add_executable(RaiJson_JsonTest JsonTest.cpp)
+target_link_libraries(RaiJson_JsonTest PRIVATE RaiJson::RaiJson gtest_main)
+add_test(NAME RaiJson_JsonTest COMMAND RaiJson_JsonTest)
 
-add_executable(JsonBenchmark JsonBenchmark.cpp)
-target_link_libraries(JsonBenchmark PRIVATE RaiJson::RaiJson gtest_main)
-add_test(NAME JsonBenchmark COMMAND JsonBenchmark)
+add_executable(RaiJson_JsonBenchmark JsonBenchmark.cpp)
+target_link_libraries(RaiJson_JsonBenchmark PRIVATE RaiJson::RaiJson gtest_main)
+add_test(NAME RaiJson_JsonBenchmark COMMAND RaiJson_JsonBenchmark)

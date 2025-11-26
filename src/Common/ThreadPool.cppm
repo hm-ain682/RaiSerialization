@@ -11,7 +11,7 @@ module;
 #include <future>
 #include <type_traits>
 
-export module rai.compiler.common.thread_pool;
+export module rai.common.thread_pool;
 
 namespace rai::common {
 

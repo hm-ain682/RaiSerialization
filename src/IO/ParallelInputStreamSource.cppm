@@ -14,7 +14,7 @@ module;
 export module rai.json.parallel_input_stream_source;
 import rai.json.reading_ahead_double_buffer;
 import rai.json.reading_ahead_buffer;
-import rai.compiler.common.thread_pool;
+import rai.common.thread_pool;
 
 export namespace rai::json {
 
