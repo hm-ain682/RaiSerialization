@@ -317,37 +317,6 @@ public:
         });
     }
 private:
-    /// @brief ポリモーフィック型（unique_ptr）を書き出す。
-    /// @tparam FieldType JsonPolymorphicFieldの型。
-    /// @tparam T unique_ptrの要素型。
-    /// @param writer 書き込み先のJsonWriter。
-    /// @param field ポリモーフィックフィールド。
-    /// @param ptr 書き出す対象のunique_ptr。
-    /// @note nullの場合はnullを書き出し、そうでない場合は型名とフィールドを含むオブジェクトを書き出す。
-    template <typename FieldType, typename T>
-    void writePolymorphicObject(JsonWriter& writer, const FieldType& field, const std::unique_ptr<T>& ptr) const {
-        if (!ptr) {
-            writer.null();
-            return;
-        }
-
-        // "type"キーを含むオブジェクトとして書き出す
-        writer.startObject();
-
-        // 型名を取得して書き出す
-        std::string typeName = field.getTypeName(ptr.get());
-        writer.key("type");
-        writer.writeObject(typeName);
-
-        // 実際のオブジェクトのフィールドを書き出す
-        if constexpr (HasJsonFields<T>) {
-            auto& fields = ptr->jsonFields();
-            fields.writeFieldsOnly(writer, ptr.get());
-        }
-
-        writer.endObject();
-    }
-
     template<IsFundamentalValue T>
     void writeObject(JsonWriter& writer, T value) const {
         writer.writeObject(value);

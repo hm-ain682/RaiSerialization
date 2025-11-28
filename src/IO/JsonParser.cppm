@@ -44,29 +44,38 @@ public:
 
     // ******************************************************************************** トークン読み取り
 public:
+    // @brief 次のトークンの開始位置を返す。
+    std::size_t nextPosition() const {
+        return peekToken().position;
+    }
+
     // 構造トークン
-    void startObject() {
+    std::size_t startObject() {
         auto t = take();
         if (!std::holds_alternative<json_token_detail::StartObjectTag>(t.value))
             typeError("object start '{'");
+        return t.position;
     }
 
-    void endObject() {
+    std::size_t endObject() {
         auto t = take();
         if (!std::holds_alternative<json_token_detail::EndObjectTag>(t.value))
             typeError("object end '}'");
+        return t.position;
     }
 
-    void startArray() {
+    std::size_t startArray() {
         auto t = take();
         if (!std::holds_alternative<json_token_detail::StartArrayTag>(t.value))
             typeError("array start '['");
+        return t.position;
     }
 
-    void endArray() {
+    std::size_t endArray() {
         auto t = take();
         if (!std::holds_alternative<json_token_detail::EndArrayTag>(t.value))
             typeError("array end ']'");
+        return t.position;
     }
 
     // 次が EndArray / EndObject か確認（消費しない）
