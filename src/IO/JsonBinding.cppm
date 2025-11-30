@@ -25,7 +25,6 @@ import rai.json.json_writer;
 import rai.json.json_parser;
 import rai.json.json_token_manager;
 import rai.json.sorted_field_map;
-import rai.json.enum_converter;
 export module rai.json.json_binding;
 
 namespace rai::json {
@@ -143,6 +142,14 @@ struct JsonField {
         : member(memberPtr), key(keyName), required(req) {}
 };
 
+/// @brief Enumと文字列のマッピングエントリ。
+/// @tparam EnumType 対象のenum型。
+template <typename EnumType>
+struct EnumEntry {
+    EnumType value;      ///< Enum値。
+    const char* name;    ///< 対応する文字列名。
+};
+
 /// @brief Enum型のフィールド用に特化したJsonField派生クラス。
 /// @tparam MemberPtr Enumメンバー変数へのポインタ。
 /// @tparam Entries Enumと文字列のマッピング配列への参照。
@@ -171,7 +178,6 @@ struct JsonEnumField : JsonField<MemberPtrType> {
     /// @brief Enum値を文字列に変換する。
     /// @param value 変換対象のenum値。
     /// @return JSON文字列。見つからない場合は例外を投げる。
-    /// @note EnumConverterを使用して変換する。
     void toJson(JsonWriter& writer, const ValueType& value) const {
         for (std::size_t i = 0; i < entriesCount_; ++i) {
             if (entriesPtr_[i].value == value) {
@@ -187,10 +193,6 @@ struct JsonEnumField : JsonField<MemberPtrType> {
     /// @return 変換されたenum値。見つからない場合は例外を投げる。
     /// @note 内部で文字列を読み取り、enumエントリで検索する。
     ValueType fromJson(JsonParser& parser) const {
-        if (!entriesPtr_ || entriesCount_ == 0) {
-            throw std::runtime_error("Enum entries not initialized");
-        }
-
         std::string jsonValue;
         parser.readTo(jsonValue);
 

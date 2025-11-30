@@ -17,7 +17,6 @@ target_sources(RaiJson
             src/IO/ParallelInputStreamSource.cppm
             src/Common/ThreadPool.cppm
             src/IO/JsonTokenManager.cppm
-            src/IO/EnumConverter.cppm
             src/IO/JsonTokenizer.cppm
             src/IO/JsonParser.cppm
             src/IO/JsonWriter.cppm
