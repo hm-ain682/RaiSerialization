@@ -22,7 +22,7 @@ target_sources(RaiJson
             src/IO/JsonWriter.cppm
             src/IO/JsonBinding.cppm
             src/IO/JsonIO.cppm
-            src/IO/SortedFieldMap.cppm
+            src/IO/SortedHashArrayMap.cppm
 )
 
 # Expose the target so other projects can link against it

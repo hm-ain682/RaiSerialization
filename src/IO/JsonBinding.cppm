@@ -434,9 +434,9 @@ private:
 public:
     using FieldTupleType = std::tuple<std::remove_cvref_t<Fields>...>;
 
-    constexpr explicit JsonFieldSetBody(Fields... fields) : fields_(std::move(fields)...) {
+    constexpr explicit JsonFieldSetBody(Fields... fields)
+        : fieldMap_(fields...), fields_(std::move(fields)...) {
         validateFields(); // ここで検証を実行
-        fieldMap_.initialize(fields...);
     }
 
     static constexpr std::size_t fieldCount() {
@@ -760,8 +760,10 @@ private:
     // ******************************************************************************** フィールド
     static constexpr std::size_t N_ = sizeof...(Fields);
 
+    // Use std::string_view for keys so lookups using std::string_view work
+    // reliably without the SortedHashArrayMap needing string_view-specific code.
+    SortedHashArrayMap<std::string_view, bool, N_> fieldMap_{}; ///< ハッシュ順に整列したフィールド情報。
     FieldTupleType fields_{}; ///< フィールド定義群。
-    SortedFieldMap<const char*, bool, N_> fieldMap_{}; ///< ハッシュ順に整列したフィールド情報。
 };
 
 export template <typename Owner, typename... Fields>
