@@ -11,9 +11,9 @@ module;
 #include <type_traits>
 #include <cstdint>
 
-export module rai.json.sorted_field_map;
+export module rai.collection.sorted_hash_array_map;
 
-export namespace rai::json {
+export namespace rai::collection {
 
 // Traits you can specialize if you want custom hash/equality/compare behavior
 template <typename K>

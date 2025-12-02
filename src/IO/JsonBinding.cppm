@@ -24,7 +24,7 @@ module;
 import rai.json.json_writer;
 import rai.json.json_parser;
 import rai.json.json_token_manager;
-import rai.json.sorted_field_map;
+import rai.collection.sorted_hash_array_map;
 export module rai.json.json_binding;
 
 namespace rai::json {
@@ -762,7 +762,7 @@ private:
 
     // Use std::string_view for keys so lookups using std::string_view work
     // reliably without the SortedHashArrayMap needing string_view-specific code.
-    SortedHashArrayMap<std::string_view, bool, N_> fieldMap_{}; ///< ハッシュ順に整列したフィールド情報。
+    collection::SortedHashArrayMap<std::string_view, bool, N_> fieldMap_{}; ///< ハッシュ順に整列したフィールド情報。
     FieldTupleType fields_{}; ///< フィールド定義群。
 };
 
