@@ -1,6 +1,7 @@
 ﻿// @file JsonBenchmark.cpp
 // @brief JSONパーサーのパフォーマンス計測
 
+import rai.json.json_field;
 import rai.json.json_writer;
 import rai.json.json_parser;
 import rai.json.json_tokenizer;

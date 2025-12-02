@@ -12,17 +12,19 @@ add_library(RaiJson)
 target_sources(RaiJson
     PUBLIC
         FILE_SET cxx_modules TYPE CXX_MODULES FILES
+            src/Common/SortedHashArrayMap.cppm
+            src/Common/ThreadPool.cppm
             src/IO/ReadingAheadBuffer.cppm
             src/IO/ReadingAheadDoubleBuffer.cppm
             src/IO/ParallelInputStreamSource.cppm
-            src/Common/ThreadPool.cppm
+            src/IO/JsonConcepts.cppm
+            src/IO/JsonField.cppm
             src/IO/JsonTokenManager.cppm
             src/IO/JsonTokenizer.cppm
             src/IO/JsonParser.cppm
             src/IO/JsonWriter.cppm
             src/IO/JsonBinding.cppm
             src/IO/JsonIO.cppm
-            src/IO/SortedHashArrayMap.cppm
 )
 
 # Expose the target so other projects can link against it
