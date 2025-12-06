@@ -73,8 +73,21 @@ public:
     using FieldTupleType = std::tuple<std::remove_cvref_t<Fields>...>;
 
     constexpr explicit JsonFieldSetBody(Fields... fields)
-        : fieldMap_(fields...), fields_(std::move(fields)...) {
+        : fields_(std::move(fields)...) {
         validateFields(); // ここで検証を実行
+
+        // Build a small array of key/value descriptors from the stored fields_
+        // so SortedHashArrayMap can be constructed from elements that have
+        // .key and .value members (we map JsonField::required -> value here).
+        using KV = collection::KeyValue<std::string_view, bool>;
+        auto buildArr = [&]<std::size_t... I>(std::index_sequence<I...>) {
+            std::array<KV, N_> arr{};
+            ((arr[I] = KV{ std::get<I>(fields_).key, std::get<I>(fields_).required }), ...);
+            return arr;
+        };
+
+        auto arr = buildArr(std::make_index_sequence<N_>{});
+        fieldMap_ = collection::SortedHashArrayMap<std::string_view, bool, N_>(arr);
     }
 
     static constexpr std::size_t fieldCount() {
