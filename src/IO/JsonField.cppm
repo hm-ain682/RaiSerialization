@@ -89,13 +89,17 @@ struct JsonEnumField : JsonField<MemberPtrType> {
         : Base(memberPtr, keyName, req) {
 
         // build name -> value descriptor array
-        collection::KeyValue<std::string_view, ValueType> nv[N];
-        for (std::size_t i = 0; i < N; ++i) nv[i] = { entries[i].name, entries[i].value };
+        std::pair<std::string_view, ValueType> nv[N];
+        for (std::size_t i = 0; i < N; ++i) {
+            nv[i] = { entries[i].name, entries[i].value };
+        }
         nameToValue_ = collection::SortedHashArrayMap<std::string_view, ValueType, N>(nv);
 
         // build value -> name descriptor array
-        collection::KeyValue<ValueType, std::string_view> vn[N];
-        for (std::size_t i = 0; i < N; ++i) vn[i] = { entries[i].value, entries[i].name };
+        std::pair<ValueType, std::string_view> vn[N];
+        for (std::size_t i = 0; i < N; ++i) {
+            vn[i] = { entries[i].value, entries[i].name };
+        }
         valueToName_ = collection::SortedHashArrayMap<ValueType, std::string_view, N>(vn);
     }
 
