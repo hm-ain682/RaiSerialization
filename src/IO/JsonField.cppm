@@ -43,6 +43,46 @@ struct MemberPointerTraits<Value Owner::*> {
     using ValueType = Value;
 };
 
+/// @brief ポインタ型から要素型を抽出するメタ関数。
+/// @tparam T ポインタ型（unique_ptr<T>、shared_ptr<T>、T*）。
+template <typename T>
+struct PointerElementType;
+
+template <typename T>
+struct PointerElementType<std::unique_ptr<T>> {
+    using type = T;
+};
+
+template <typename T>
+struct PointerElementType<std::shared_ptr<T>> {
+    using type = T;
+};
+
+template <typename T>
+struct PointerElementType<T*> {
+    using type = T;
+};
+
+// (moved below, after concept definitions)
+
+/// @brief ポインタ型（unique_ptr/shared_ptr/生ポインタ）であることを確認するconcept。
+template <typename T>
+concept SmartOrRawPointer = requires {
+    typename PointerElementType<T>::type;
+} && (std::is_same_v<T, std::unique_ptr<typename PointerElementType<T>::type>> ||
+      std::is_same_v<T, std::shared_ptr<typename PointerElementType<T>::type>> ||
+      std::is_same_v<T, typename PointerElementType<T>::type*>);
+
+/// @brief ポインタ型のvectorであることを確認するconcept。
+template <typename T>
+concept VectorOfPointers = requires {
+    typename T::value_type;
+} && SmartOrRawPointer<typename T::value_type> &&
+     (std::is_same_v<T, std::vector<typename T::value_type>>);
+
+// null は全ポインタ型（unique_ptr/shared_ptr/生ポインタ）へ暗黙変換可能のため、
+// 専用ヘルパーは不要（nullptr を直接返す）。
+
 // ******************************************************************************** フィールド定義
 
 /// @brief JSONフィールドの基本定義。
@@ -140,17 +180,20 @@ private:
     collection::SortedHashArrayMap<ValueType, std::string_view, N> valueToName_{}; ///< enum value -> name
 };
 
-/// @brief ポリモーフィック型用のファクトリ関数型。
-export template <typename BaseType>
-using PolymorphicTypeFactory = std::function<std::unique_ptr<BaseType>()>;
+/// @brief ポリモーフィック型用のファクトリ関数型（ポインタ型を返す）。
+export template <typename PtrType>
+    requires SmartOrRawPointer<PtrType>
+using PolymorphicTypeFactory = std::function<PtrType()>;
 
 /// @brief 共通: polymorphic オブジェクト一つ分の読み取りを行うヘルパー
 /// - parser の現在位置は null または startObject のいずれかであることを期待
 /// - 成功した場合、std::unique_ptr<BaseType>（null を示す場合は nullptr）を返す
-template <typename BaseType, std::size_t N>
-std::unique_ptr<BaseType> readPolymorphicInstance(JsonParser& parser,
-    const collection::SortedHashArrayMap<std::string_view, PolymorphicTypeFactory<BaseType>, N>& entriesMap,
+template <typename PtrType, std::size_t N>
+    requires SmartOrRawPointer<PtrType>
+PtrType readPolymorphicInstance(JsonParser& parser,
+    const collection::SortedHashArrayMap<std::string_view, PolymorphicTypeFactory<PtrType>, N>& entriesMap,
     std::string_view jsonKey = "type") {
+    using BaseType = typename PointerElementType<PtrType>::type;
     if (parser.nextIsNull()) {
         parser.skipValue();
         return nullptr;
@@ -175,9 +218,13 @@ std::unique_ptr<BaseType> readPolymorphicInstance(JsonParser& parser,
 
     if constexpr (HasJsonFields<BaseType>) {
         auto& fields = tmp->jsonFields();
+        BaseType* raw = [&]() -> BaseType* {
+            if constexpr (std::is_same_v<PtrType, BaseType*>) return tmp;
+            else return tmp.get();
+        }();
         while (!parser.nextIsEndObject()) {
             std::string k = parser.nextKey();
-            if (!fields.readFieldByKey(parser, tmp.get(), k)) {
+            if (!fields.readFieldByKey(parser, raw, k)) {
                 parser.noteUnknownKey(k);
                 parser.skipValue();
             }
@@ -198,15 +245,12 @@ std::unique_ptr<BaseType> readPolymorphicInstance(JsonParser& parser,
 /// @tparam MemberPtr unique_ptr<基底クラス>メンバー変数へのポインタ。
 /// @tparam Entries 型名とファクトリ関数のマッピング配列への参照。
 export template <typename MemberPtrType, std::size_t N = 0>
+    requires SmartOrRawPointer<typename JsonField<MemberPtrType>::ValueType>
 struct JsonPolymorphicField : JsonField<MemberPtrType> {
     using Base = JsonField<MemberPtrType>;
     using typename Base::ValueType;
-    using BaseType = typename ValueType::element_type;
-    using Map = collection::SortedHashArrayMap<std::string_view, PolymorphicTypeFactory<BaseType>, N>;
-
-    // ValueTypeはstd::unique_ptr<T>であることを確認
-    static_assert(std::is_same_v<ValueType, std::unique_ptr<typename ValueType::element_type>>,
-                  "JsonPolymorphicField requires std::unique_ptr type");
+    using BaseType = typename PointerElementType<ValueType>::type;
+    using Map = collection::SortedHashArrayMap<std::string_view, PolymorphicTypeFactory<ValueType>, N>;
 
     /// @brief ポリモーフィック型用フィールドのコンストラクタ。
     /// @param keyName JSONキー名。
@@ -219,7 +263,7 @@ struct JsonPolymorphicField : JsonField<MemberPtrType> {
     /// @brief 型名から対応するエントリを検索する。
     /// @param typeName 検索する型名。
     /// @return 見つかった場合はエントリへのポインタ、見つからない場合はnullptr。
-    const PolymorphicTypeFactory<BaseType>* findEntry(std::string_view typeName) const {
+    const PolymorphicTypeFactory<ValueType>* findEntry(std::string_view typeName) const {
         return nameToEntry_.findValue(typeName);
     }
 
@@ -236,15 +280,17 @@ struct JsonPolymorphicField : JsonField<MemberPtrType> {
                 result = it.key;
             }
         }
-        if (!found) throw std::runtime_error(std::string("Unknown polymorphic type: ") + typeid(obj).name());
+        if (!found) {
+            throw std::runtime_error(std::string("Unknown polymorphic type: ") + typeid(obj).name());
+        }
         return result;
     }
 
-    /// @brief JsonParser から polymorphic オブジェクト（unique_ptr<T>）を読み込む。
+    /// @brief JsonParser から polymorphic オブジェクトを読み込む。
     /// @param parser JsonParser の参照。現在の位置にオブジェクトか null があることを期待する。
-    /// @return 要素型 T を保持する unique_ptr。null の場合は nullptr を返す。
+    /// @return 要素型 T を保持するポインタ（unique_ptr/shared_ptr/生ポインタ）。null の場合は nullptr を返す。
     ValueType fromJson(JsonParser& parser) const {
-        return readPolymorphicInstance<BaseType, N>(parser, nameToEntry_, jsonKey_);
+        return readPolymorphicInstance<ValueType, N>(parser, nameToEntry_, jsonKey_);
     }
 
     /// @brief JsonWriter に対して polymorphic オブジェクトを書き出す。
@@ -260,7 +306,14 @@ struct JsonPolymorphicField : JsonField<MemberPtrType> {
         writer.key(jsonKey_);
         writer.writeObject(typeName);
         auto& fields = ptr->jsonFields();
-        fields.writeFieldsOnly(writer, ptr.get());
+        BaseType* raw = [&]() -> BaseType* {
+            if constexpr (std::is_same_v<ValueType, BaseType*>) {
+                return ptr;
+            } else {
+                return ptr.get();
+            }
+        }();
+        fields.writeFieldsOnly(writer, raw);
         writer.endObject();
     }
 
@@ -274,26 +327,19 @@ private:
 
 /// @brief ポリモーフィックな配列（vector<std::unique_ptr<BaseType>>）用のフィールド。
 export template <typename MemberPtrType, std::size_t N = 0>
+    requires VectorOfPointers<typename JsonField<MemberPtrType>::ValueType>
 struct JsonPolymorphicArrayField : JsonField<MemberPtrType> {
     using Base = JsonField<MemberPtrType>;
     using typename Base::ValueType;
-    using ElementUniquePtr = typename ValueType::value_type; // std::unique_ptr<T>
-    using BaseType = typename ElementUniquePtr::element_type;
-    using Map = collection::SortedHashArrayMap<std::string_view, PolymorphicTypeFactory<BaseType>, N>;
-
-    // ValueType は std::vector<std::unique_ptr<T>> であることを確認する
-    template <typename X>
-    struct is_vector_of_unique_ptr : std::false_type {};
-    template <typename U>
-    struct is_vector_of_unique_ptr<std::vector<std::unique_ptr<U>>> : std::true_type {};
-    static_assert(is_vector_of_unique_ptr<ValueType>::value,
-        "JsonPolymorphicArrayField requires std::vector<std::unique_ptr<T>> type");
+    using ElementPtrType = typename ValueType::value_type; // std::unique_ptr<T>, std::shared_ptr<T>, or T*
+    using BaseType = typename PointerElementType<ElementPtrType>::type;
+    using Map = collection::SortedHashArrayMap<std::string_view, PolymorphicTypeFactory<ElementPtrType>, N>;
 
     constexpr explicit JsonPolymorphicArrayField(MemberPtrType memberPtr, const char* keyName,
         const Map& entries, const char* jsonKey = "type", bool req = false)
         : Base(memberPtr, keyName, req), nameToEntry_(entries), jsonKey_(jsonKey) {}
 
-    const PolymorphicTypeFactory<BaseType>* findEntry(std::string_view typeName) const {
+    const PolymorphicTypeFactory<ElementPtrType>* findEntry(std::string_view typeName) const {
         return nameToEntry_.findValue(typeName);
     }
 
@@ -313,15 +359,16 @@ struct JsonPolymorphicArrayField : JsonField<MemberPtrType> {
         throw std::runtime_error(std::string("Unknown polymorphic type: ") + typeid(obj).name());
     }
 
-    /// @brief JsonParser から polymorphic 配列（vector<std::unique_ptr<T>>）を読み込む。
+    /// @brief JsonParser から polymorphic 配列を読み込む。
     /// @param parser JsonParser の参照。現在の位置に配列があることを期待する。
-    /// @return 読み込まれたベクター（要素は unique_ptr<T>）。
+    /// @return 読み込まれたベクター（要素は unique_ptr<T>/shared_ptr<T>/T*）。
     ValueType fromJson(JsonParser& parser) const {
         ValueType out;
         parser.startArray();
         out.clear();
         while (!parser.nextIsEndArray()) {
-            out.push_back(readPolymorphicInstance<BaseType, N>(parser, nameToEntry_, jsonKey_));
+            auto elem = readPolymorphicInstance<ElementPtrType, N>(parser, nameToEntry_, jsonKey_);
+            out.push_back(std::move(elem));
         }
         parser.endArray();
         return out;
@@ -329,7 +376,7 @@ struct JsonPolymorphicArrayField : JsonField<MemberPtrType> {
 
     /// @brief JsonWriter に対して polymorphic 配列を書き出す。
     /// @param writer JsonWriter の参照。
-    /// @param vec 書き込み対象の vector<std::unique_ptr<T>>。
+    /// @param vec 書き込み対象の vector（要素は unique_ptr<T>/shared_ptr<T>/T*）。
     void toJson(JsonWriter& writer, const ValueType& vec) const {
         writer.startArray();
         for (const auto& ptr : vec) {
@@ -342,7 +389,14 @@ struct JsonPolymorphicArrayField : JsonField<MemberPtrType> {
             writer.key(jsonKey_);
             writer.writeObject(typeName);
             auto& fields = ptr->jsonFields();
-            fields.writeFieldsOnly(writer, ptr.get());
+            BaseType* raw = [&]() -> BaseType* {
+                if constexpr (std::is_same_v<ElementPtrType, BaseType*>) {
+                    return ptr;
+                } else {
+                    return ptr.get();
+                }
+            }();
+            fields.writeFieldsOnly(writer, raw);
             writer.endObject();
         }
         writer.endArray();

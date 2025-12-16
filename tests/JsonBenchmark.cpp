@@ -121,7 +121,7 @@ struct ContainerNode : public BaseNode {
 // ポリモーフィック型のディスパッチ登録
 // ********************************************************************************
 
-using MapEntry = std::pair<std::string_view, PolymorphicTypeFactory<BaseNode>>;
+using MapEntry = std::pair<std::string_view, PolymorphicTypeFactory<std::unique_ptr<BaseNode>>>;
 
 // ポリモーフィック型エントリマップ（makeSortedHashArrayMapを使用）
 inline const auto baseNodeEntriesMap = rai::collection::makeSortedHashArrayMap(
