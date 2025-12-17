@@ -7,6 +7,7 @@ module;
 #include <cmath>
 #include <ostream>
 #include <string_view>
+#include <type_traits>
 
 export module rai.json.json_writer;
 
@@ -164,16 +165,20 @@ public:
         stream_ << (value ? "true" : "false");
     }
 
-    // @brief int値の書き込み
-    // @param value 書き込む値
-    void writeObject(int value) {
+    // @brief 整数値の書き込み
+    // @param value 書き込む値（すべての整数プリミティブ型に対応）
+    template<typename T>
+        requires std::is_integral_v<T> && (!std::is_same_v<T, bool>)
+    void writeObject(T value) {
         writeCommaIfNeeded();
         stream_ << value;
     }
 
     // @brief 浮動小数点数値の書き込み
-    // @param value 書き込む値
-    void writeObject(double value) {
+    // @param value 書き込む値（すべての浮動小数点数プリミティブ型に対応）
+    template<typename T>
+        requires std::is_floating_point_v<T>
+    void writeObject(T value) {
         writeCommaIfNeeded();
 
         // 特殊な値のチェック

@@ -4,6 +4,7 @@
 module;
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <variant>
 #include <vector>
 
@@ -115,32 +116,30 @@ public:
         }
     }
 
-    void readTo(int& out) {
+    template<typename T>
+        requires std::is_integral_v<T> && (!std::is_same_v<T, bool>)
+    void readTo(T& out) {
         auto t = take();
         if (std::holds_alternative<json_token_detail::IntVal>(t.value)) {
-            out = static_cast<int>(std::get<json_token_detail::IntVal>(t.value).v);
+            out = static_cast<T>(std::get<json_token_detail::IntVal>(t.value).v);
         } else {
-            typeError("int");
+            typeError("integer");
         }
     }
 
-    void readTo(double& out) {
+    template<typename T>
+        requires std::is_floating_point_v<T>
+    void readTo(T& out) {
         auto t = take();
         if (std::holds_alternative<json_token_detail::NumVal>(t.value)) {
-            out = std::get<json_token_detail::NumVal>(t.value).v;
+            out = static_cast<T>(std::get<json_token_detail::NumVal>(t.value).v);
             return;
         }
         if (std::holds_alternative<json_token_detail::IntVal>(t.value)) {
-            out = static_cast<double>(std::get<json_token_detail::IntVal>(t.value).v);
+            out = static_cast<T>(std::get<json_token_detail::IntVal>(t.value).v);
             return;
         }
         typeError("number");
-    }
-
-    void readTo(float& out) {
-        double temp{};
-        readTo(temp);
-        out = static_cast<float>(temp);
     }
 
     void readTo(std::string& out) {
