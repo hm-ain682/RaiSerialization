@@ -1,4 +1,6 @@
 {
+    "C_Cpp.default.cppStandard": "c++23",
+    "C_Cpp.intelliSenseEngine": "Tag Parser",
     "files.associations": {
         "optional": "cpp",
         "bit": "cpp",
