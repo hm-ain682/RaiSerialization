@@ -45,29 +45,33 @@ public:
     // 構造トークン
     std::size_t startObject() {
         auto t = take();
-        if (!std::holds_alternative<json_token_detail::StartObjectTag>(t.value))
+        if (!std::holds_alternative<json_token_detail::StartObjectTag>(t.value)) {
             typeError("object start '{'");
+        }
         return t.position;
     }
 
     std::size_t endObject() {
         auto t = take();
-        if (!std::holds_alternative<json_token_detail::EndObjectTag>(t.value))
+        if (!std::holds_alternative<json_token_detail::EndObjectTag>(t.value)) {
             typeError("object end '}'");
+        }
         return t.position;
     }
 
     std::size_t startArray() {
         auto t = take();
-        if (!std::holds_alternative<json_token_detail::StartArrayTag>(t.value))
+        if (!std::holds_alternative<json_token_detail::StartArrayTag>(t.value)) {
             typeError("array start '['");
+        }
         return t.position;
     }
 
     std::size_t endArray() {
         auto t = take();
-        if (!std::holds_alternative<json_token_detail::EndArrayTag>(t.value))
+        if (!std::holds_alternative<json_token_detail::EndArrayTag>(t.value)) {
             typeError("array end ']'");
+        }
         return t.position;
     }
 
@@ -90,19 +94,21 @@ public:
     // キー
     std::string nextKey() {
         auto t = take();
-        if (!std::holds_alternative<json_token_detail::KeyVal>(t.value))
+        if (!std::holds_alternative<json_token_detail::KeyVal>(t.value)) {
             typeError("object key");
+        }
         return std::get<json_token_detail::KeyVal>(t.value).v;
     }
 
     void expectKey(const char* expected) {
         auto t = take();
-        if (!std::holds_alternative<json_token_detail::KeyVal>(t.value))
+        if (!std::holds_alternative<json_token_detail::KeyVal>(t.value)) {
             typeError("object key");
+        }
         if (std::get<json_token_detail::KeyVal>(t.value).v != expected) {
             throw std::runtime_error(
-                std::string("JsonParser: unexpected key '") + std::get<json_token_detail::KeyVal>(t.value).v + "', expected '" +
-                std::string(expected) + "'");
+                std::string("JsonParser: unexpected key '") +
+                std::get<json_token_detail::KeyVal>(t.value).v + "', expected '" + std::string(expected) + "'");
         }
     }
 
@@ -151,6 +157,190 @@ public:
         typeError("string");
     }
 
+    // @brief 文字列から1文字を読み込む
+    void readTo(char& out) {
+        auto t = take();
+        if (std::holds_alternative<json_token_detail::StrVal>(t.value)) {
+            const auto& str = std::get<json_token_detail::StrVal>(t.value);
+            if (str.size() == 1) {
+                out = str[0];
+                return;
+            }
+            throw std::runtime_error("JsonParser: expected single character string");
+        }
+        typeError("string");
+    }
+
+    // @brief 文字列から1文字を読み込む（符号付き）
+    void readTo(signed char& out) {
+        char temp;
+        readTo(temp);
+        out = static_cast<signed char>(temp);
+    }
+
+    // @brief 文字列から1文字を読み込む（符号なし）
+    void readTo(unsigned char& out) {
+        char temp;
+        readTo(temp);
+        out = static_cast<unsigned char>(temp);
+    }
+
+    // @brief 文字列から1バイトを読み込む（UTF-8コードユニット）
+    void readTo(char8_t& out) {
+        auto t = take();
+        if (std::holds_alternative<json_token_detail::StrVal>(t.value)) {
+            const auto& str = std::get<json_token_detail::StrVal>(t.value);
+            if (str.size() == 1) {
+                out = static_cast<char8_t>(static_cast<unsigned char>(str[0]));
+                return;
+            }
+            throw std::runtime_error("JsonParser: expected single byte string for char8_t");
+        }
+        typeError("string");
+    }
+
+    // @brief 文字列から1コードポイントを読み込む（UTF-16）
+    void readTo(char16_t& out) {
+        auto t = take();
+        if (std::holds_alternative<json_token_detail::StrVal>(t.value)) {
+            const auto& str = std::get<json_token_detail::StrVal>(t.value);
+            char32_t codePoint;
+            size_t byteCount;
+            if (!decodeUtf8FirstCodePoint(str, codePoint, byteCount)) {
+                throw std::runtime_error("JsonParser: invalid UTF-8 sequence for char16_t");
+            }
+            // UTF-8文字列全体が1コードポイントであることを確認
+            if (byteCount != str.size()) {
+                throw std::runtime_error("JsonParser: char16_t requires single code point (multi-character string given)");
+            }
+            // BMP範囲のみサポート（入れる先が1要素しかないのでサロゲートペアには対応できない）
+            if (codePoint > 0xFFFF) {
+                throw std::runtime_error("JsonParser: char16_t does not support code points beyond BMP (U+FFFF)");
+            }
+
+            out = static_cast<char16_t>(codePoint);
+            return;
+        }
+        typeError("string");
+    }
+
+    // @brief 文字列から1コードポイントを読み込む（UTF-32）
+    void readTo(char32_t& out) {
+        auto t = take();
+        if (std::holds_alternative<json_token_detail::StrVal>(t.value)) {
+            const auto& str = std::get<json_token_detail::StrVal>(t.value);
+            char32_t codePoint;
+            size_t byteCount;
+
+            if (!decodeUtf8FirstCodePoint(str, codePoint, byteCount)) {
+                throw std::runtime_error("JsonParser: invalid UTF-8 sequence for char32_t");
+            }
+
+            // UTF-8文字列全体が1コードポイントであることを確認
+            if (byteCount != str.size()) {
+                throw std::runtime_error("JsonParser: char32_t requires single code point (multi-character string given)");
+            }
+
+            out = codePoint;
+            return;
+        }
+        typeError("string");
+    }
+
+    // @brief 文字列から1文字を読み込む（ワイド文字）
+    void readTo(wchar_t& out) {
+        if constexpr (sizeof(wchar_t) == 2) {
+            char16_t temp;
+            readTo(temp);
+            out = static_cast<wchar_t>(temp);
+        } else {
+            char32_t temp;
+            readTo(temp);
+            out = static_cast<wchar_t>(temp);
+        }
+    }
+
+private:
+    // @brief UTF-8継続バイト（10xxxxxx）をチェックして下位6ビットを抽出
+    // @return 有効な継続バイトならそのビット値（0-63）、無効なら-1
+    static int decodeUtf8ContinuationByte(unsigned char byte) {
+        if ((byte & 0xC0) != 0x80) {
+            return -1;
+        }
+        return byte & 0x3F;
+    }
+
+    // @brief UTF-8文字列の先頭から1コードポイントをデコード
+    // @param str UTF-8エンコード文字列
+    // @param outCodePoint デコードされたコードポイント
+    // @param outByteCount 消費したバイト数
+    // @return デコード成功時true
+    static bool decodeUtf8FirstCodePoint(std::string_view str, char32_t& outCodePoint, size_t& outByteCount) {
+        if (str.empty()) {
+            return false;
+        }
+
+        unsigned char byte0 = static_cast<unsigned char>(str[0]);
+
+        // 1バイト文字 (0xxxxxxx)
+        if (byte0 < 0x80) {
+            outCodePoint = static_cast<char32_t>(byte0);
+            outByteCount = 1;
+            return true;
+        }
+
+        // 2バイト文字 (110xxxxx 10xxxxxx)
+        if ((byte0 & 0xE0) == 0xC0) {
+            if (str.size() < 2) {
+                return false;
+            }
+            int bits1 = decodeUtf8ContinuationByte(static_cast<unsigned char>(str[1]));
+            if (bits1 < 0) {
+                return false;
+            }
+
+            outCodePoint = ((byte0 & 0x1F) << 6) | bits1;
+            outByteCount = 2;
+            return outCodePoint >= 0x80; // オーバーロングチェック
+        }
+
+        // 3バイト文字 (1110xxxx 10xxxxxx 10xxxxxx)
+        if ((byte0 & 0xF0) == 0xE0) {
+            if (str.size() < 3) {
+                return false;
+            }
+            int bits1 = decodeUtf8ContinuationByte(static_cast<unsigned char>(str[1]));
+            int bits2 = decodeUtf8ContinuationByte(static_cast<unsigned char>(str[2]));
+            if (bits1 < 0 || bits2 < 0) {
+                return false;
+            }
+
+            outCodePoint = ((byte0 & 0x0F) << 12) | (bits1 << 6) | bits2;
+            outByteCount = 3;
+            return outCodePoint >= 0x800 && (outCodePoint < 0xD800 || outCodePoint > 0xDFFF); // オーバーロング&サロゲートチェック
+        }
+
+        // 4バイト文字 (11110xxx 10xxxxxx 10xxxxxx 10xxxxxx)
+        if ((byte0 & 0xF8) == 0xF0) {
+            if (str.size() < 4) {
+                return false;
+            }
+            int bits1 = decodeUtf8ContinuationByte(static_cast<unsigned char>(str[1]));
+            int bits2 = decodeUtf8ContinuationByte(static_cast<unsigned char>(str[2]));
+            int bits3 = decodeUtf8ContinuationByte(static_cast<unsigned char>(str[3]));
+            if (bits1 < 0 || bits2 < 0 || bits3 < 0) {
+                return false;
+            }
+
+            outCodePoint = ((byte0 & 0x07) << 18) | (bits1 << 12) | (bits2 << 6) | bits3;
+            outByteCount = 4;
+            return outCodePoint >= 0x10000 && outCodePoint <= 0x10FFFF; // 範囲チェック
+        }
+
+        return false; // 不正なUTF-8
+    }
+
+public:
     // 値全体をスキップ（未知キーなどで使用）。プリミティブ/配列/オブジェクトを丸ごと消費する。
     void skipValue() {
         auto t = take();

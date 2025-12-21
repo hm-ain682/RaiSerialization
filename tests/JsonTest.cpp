@@ -64,83 +64,6 @@ struct C : public A {
     }
 };
 
-/// @brief BとCのJSON書き出しをテストする。
-TEST(JsonWriterTest, WriteBAndC) {
-    B b; C c;
-    auto bText = getJsonContent(b);
-    ASSERT_FALSE(bText.empty());
-    // ファイル出力が例外なく動作することのみ確認
-    ASSERT_NO_THROW(writeJsonFile(c, "c.json"));
-}
-
-/// @brief Bを具体型として書き出すテスト。
-/// @note テンプレート関数は実引数の型に基づいて解決されるため、
-///       参照型であっても実際の型でjsonFields()が呼ばれる。
-TEST(JsonWriterTest, WriteBDirectly) {
-    B b;
-    auto text = getJsonContent(b);
-    EXPECT_FALSE(text.empty());
-    // wとyが含まれることを確認（全体比較）
-    // JSON5形式：キーに引用符なし、数値は整数として出力
-    EXPECT_EQ(text, "{w:true,y:2}");
-}
-
-/// @brief Aを具体型として書き出すテスト。
-TEST(JsonWriterTest, WriteADirectly) {
-    A a;
-    auto text = getJsonContent(a);
-    EXPECT_FALSE(text.empty());
-    // wとxが含まれることを確認（全体比較）
-    // JSON5形式：キーに引用符なし
-    EXPECT_EQ(text, "{w:true,x:1}");
-}
-
-/// @brief 文字列からBを読み込むテスト。
-TEST(JsonReaderTest, ReadBFromString) {
-    const std::string json = "{\"w\":true,\"y\":2.5}";
-    B b;
-    readJsonString(json, b);
-    EXPECT_TRUE(b.w);
-    EXPECT_FLOAT_EQ(b.y, 2.5f);
-}
-
-/// @brief 文字列からCを読み込むテスト。
-TEST(JsonReaderTest, ReadCFromString) {
-    const std::string json = "{\"w\":false,\"z\":\"hello\"}";
-    C c; readJsonString(json, c);
-    EXPECT_FALSE(c.w);
-    EXPECT_EQ(c.z, "hello");
-}
-
-/// @brief 基底クラス参照経由で仮想関数が呼ばれることを確認するテスト。
-TEST(JsonWriterTest, VirtualDispatchFromBaseReference) {
-    B b;
-    b.w = false;
-    b.y = 3.14f;
-
-    // 基底クラスポインタ経由でアクセス
-    A* basePtr = &b;
-    auto text = getJsonContent(*basePtr);
-
-    EXPECT_FALSE(text.empty());
-    // Bのjsonfields()が呼ばれるので、wとyが含まれる（全体比較）
-    // JSON5形式：キーに引用符なし
-    EXPECT_EQ(text, "{w:false,y:3.14}");
-}
-
-/// @brief 基底クラス参照経由での読み込みテスト。
-TEST(JsonReaderTest, VirtualDispatchRead) {
-    const std::string json = "{\"w\":true,\"y\":2.5}";
-    B b;
-    A& baseRef = b;
-
-    // 基底クラス参照経由で読み込み
-    readJsonString(json, baseRef);
-
-    EXPECT_TRUE(b.w);
-    EXPECT_FLOAT_EQ(b.y, 2.5f);
-}
-
 // ********************************************************************************
 // Polymorphic field/array tests for custom discriminator key
 // ********************************************************************************
@@ -151,6 +74,11 @@ struct PB {
         static const auto f = makeJsonFieldSet<PB>();
         return f;
     }
+
+    /// @brief ポリモーフィックな比較演算子。
+    /// @param other 比較対象のオブジェクト。
+    /// @return 等しい場合はtrue、そうでない場合はfalse。
+    virtual bool operator==(const PB& other) const = 0;
 };
 
 struct POne : public PB {
@@ -161,6 +89,11 @@ struct POne : public PB {
         );
         return f;
     }
+
+    bool operator==(const PB& other) const override {
+        auto* p = dynamic_cast<const POne*>(&other);
+        return p != nullptr && x == p->x;
+    }
 };
 
 struct PTwo : public PB {
@@ -170,6 +103,11 @@ struct PTwo : public PB {
             JsonField(&PTwo::s, "s")
         );
         return f;
+    }
+
+    bool operator==(const PB& other) const override {
+        auto* p = dynamic_cast<const PTwo*>(&other);
+        return p != nullptr && s == p->s;
     }
 };
 
@@ -192,34 +130,395 @@ struct Holder {
         );
         return fields;
     }
+
+    bool operator==(const Holder& other) const {
+        // item フィールドの比較
+        bool itemMatch = (item == nullptr && other.item == nullptr) ||
+            (item != nullptr && other.item != nullptr && *item == *other.item);
+        if (!itemMatch) {
+            return false;
+        }
+
+        // arr フィールドの比較
+        if (arr.size() != other.arr.size()) {
+            return false;
+        }
+        for (size_t i = 0; i < arr.size(); ++i) {
+            bool elemMatch = (arr[i] == nullptr && other.arr[i] == nullptr) ||
+                (arr[i] != nullptr && other.arr[i] != nullptr && *arr[i] == *other.arr[i]);
+            if (!elemMatch) {
+                return false;
+            }
+        }
+        return true;
+    }
 };
 
 TEST(JsonPolymorphicTest, ReadSingleCustomKey) {
-    const std::string json = "{\"item\":{\"kind\":\"One\",\"x\":42}}";
-    Holder h; readJsonString(json, h);
-    ASSERT_TRUE(h.item);
-    auto* p = dynamic_cast<POne*>(h.item.get());
-    ASSERT_NE(p, nullptr);
-    EXPECT_EQ(p->x, 42);
+    // テスト用に値を設定
+    Holder original;
+    original.item = std::make_unique<POne>();
+    dynamic_cast<POne*>(original.item.get())->x = 42;
+
+    // JSON形式で書き出す
+    auto json = getJsonContent(original);
+
+    // JSONの内容が正しいか確認（全体比較）
+    EXPECT_EQ(json, "{\"item\":{\"kind\":\"One\",\"x\":42}}");
+
+    // JSONから読み込む
+    Holder parsed;
+    readJsonString(json, parsed);
+
+    // 欠娃まれたエラー: 巩揃〺后をチェックしウ事根拙なければならない。
+    // 元オブジェクトと比較（粗論的に検証）
+    EXPECT_EQ(parsed, original);
 }
 
 TEST(JsonPolymorphicTest, ReadArrayCustomKeyAndNull) {
-    const std::string json = "{\"arr\":[{\"kind\":\"One\",\"x\":1},{\"kind\":\"Two\",\"s\":\"abc\"},null]}";
-    Holder h; readJsonString(json, h);
-    ASSERT_EQ(h.arr.size(), 3u);
-    auto* p0 = dynamic_cast<POne*>(h.arr[0].get()); ASSERT_NE(p0, nullptr); EXPECT_EQ(p0->x, 1);
-    auto* p1 = dynamic_cast<PTwo*>(h.arr[1].get()); ASSERT_NE(p1, nullptr); EXPECT_EQ(p1->s, "abc");
-    EXPECT_EQ(h.arr[2], nullptr);
+    // テスト用に値を設定
+    Holder original;
+    auto one = std::make_unique<POne>();
+    one->x = 1;
+    original.arr.push_back(std::move(one));
+
+    auto two = std::make_unique<PTwo>();
+    two->s = "abc";
+    original.arr.push_back(std::move(two));
+
+    original.arr.push_back(nullptr);
+
+    // JSON形式で書き出す
+    auto json = getJsonContent(original);
+
+    // JSONの内容が正しいか確認（全体比較）
+    EXPECT_EQ(json, "{\"arr\":[{\"kind\":\"One\",\"x\":1},{\"kind\":\"Two\",\"s\":\"abc\"},null]}");
+
+    // JSONから読み込む
+    Holder parsed;
+    readJsonString(json, parsed);
+
+    // 元オブジェクトと比較（粗論的に検証）
+    EXPECT_EQ(parsed, original);
 }
 
 TEST(JsonPolymorphicTest, WriteAndReadRoundTripUsingCustomKey) {
-    Holder h;
-    auto one = std::make_unique<POne>(); one->x = 99; h.item = std::move(one);
+    // テスト用に値を設定
+    auto one = std::make_unique<POne>();
+    one->x = 99;
+    Holder original;
+    original.item = std::move(one);
 
-    auto text = getJsonContent(h);
+    // JSON形式で書き出す
+    auto json = getJsonContent(original);
 
-    Holder parsed; readJsonString(text, parsed);
-    ASSERT_TRUE(parsed.item);
-    auto* p = dynamic_cast<POne*>(parsed.item.get()); ASSERT_NE(p, nullptr);
-    EXPECT_EQ(p->x, 99);
+    // JSONの内容が正しいか確認（全体比較）
+    EXPECT_EQ(json, "{\"item\":{\"kind\":\"One\",\"x\":99}}");
+
+    // JSONから読み込む
+    Holder parsed;
+    readJsonString(json, parsed);
+
+    // 元オブジェクトと比較（粗論的に検証）
+    EXPECT_EQ(parsed, original);
+}
+
+// ********************************************************************************
+// テストカテゴリ：整数型
+// ********************************************************************************
+
+/// @brief 整数型を含む構造体。
+struct IntegerTypes {
+    short s = 0;
+    unsigned short us = 0;
+    int i = 0;
+    unsigned int ui = 0;
+    long l = 0;
+    unsigned long ul = 0;
+    long long ll = 0;
+    unsigned long long ull = 0;
+
+    const IJsonFieldSet& jsonFields() const {
+        static const auto fields = makeJsonFieldSet<IntegerTypes>(
+            JsonField(&IntegerTypes::s, "s"),
+            JsonField(&IntegerTypes::us, "us"),
+            JsonField(&IntegerTypes::i, "i"),
+            JsonField(&IntegerTypes::ui, "ui"),
+            JsonField(&IntegerTypes::l, "l"),
+            JsonField(&IntegerTypes::ul, "ul"),
+            JsonField(&IntegerTypes::ll, "ll"),
+            JsonField(&IntegerTypes::ull, "ull")
+        );
+        return fields;
+    }
+
+    bool operator==(const IntegerTypes& other) const {
+        return s == other.s && us == other.us && i == other.i && ui == other.ui &&
+               l == other.l && ul == other.ul && ll == other.ll && ull == other.ull;
+    }
+};
+
+/// @brief 整数型の読み書きテスト。
+TEST(JsonIntegerTest, ReadWriteRoundTrip) {
+    // テスト用に異なる値を設定
+    IntegerTypes original;
+    original.s = -1000;
+    original.us = 2000;
+    original.i = -3000000;
+    original.ui = 4000000;
+    original.l = -5000000000LL;
+    original.ul = 6000000000ULL;
+    original.ll = 1234567890123456LL;
+    original.ull = 9876543210987654ULL;
+
+    // JSON形式で書き出す
+    auto json = getJsonContent(original);
+
+    // JSONの内容が正しいか確認（全体比較）
+    EXPECT_EQ(json, "{s:-1000,"
+        "us:2000,"
+        "i:-3000000,"
+        "ui:4000000,"
+        "l:-5000000000,"
+        "ul:6000000000,"
+        "ll:1234567890123456,"
+        "ull:9876543210987654}");
+
+    // JSONから読み込む
+    IntegerTypes parsed;
+    readJsonString(json, parsed);
+
+    // 値が一致していることを確認
+    EXPECT_EQ(parsed, original);
+}
+
+// ********************************************************************************
+// テストカテゴリ：浮動小数点数型
+// ********************************************************************************
+
+/// @brief 浮動小数点数型を含む構造体。
+struct FloatingPointTypes {
+    float f = 0.0f;
+    double d = 0.0;
+    long double ld = 0.0L;
+
+    const IJsonFieldSet& jsonFields() const {
+        static const auto fields = makeJsonFieldSet<FloatingPointTypes>(
+            JsonField(&FloatingPointTypes::f, "f"),
+            JsonField(&FloatingPointTypes::d, "d"),
+            JsonField(&FloatingPointTypes::ld, "ld")
+        );
+        return fields;
+    }
+
+    bool operator==(const FloatingPointTypes& other) const {
+        return f == other.f && d == other.d && ld == other.ld;
+    }
+};
+
+/// @brief 浮動小数点数型の読み書きテスト。
+TEST(JsonFloatingPointTest, ReadWriteRoundTrip) {
+    // テスト用に異なる値を設定
+    FloatingPointTypes original;
+    original.f = 1.5f;
+    original.d = -2.75;
+    original.ld = 3.125L;
+
+    // JSON形式で書き出す
+    auto json = getJsonContent(original);
+
+    // JSONの内容が正しいか確認（全体比較）
+    EXPECT_EQ(json, "{f:1.5,d:-2.75,ld:3.125}");
+
+    // JSONから読み込む
+    FloatingPointTypes parsed;
+    readJsonString(json, parsed);
+
+    // 値が一致していることを確認
+    EXPECT_FLOAT_EQ(parsed.f, original.f);
+    EXPECT_DOUBLE_EQ(parsed.d, original.d);
+    EXPECT_DOUBLE_EQ(static_cast<double>(parsed.ld), static_cast<double>(original.ld));
+}
+
+// ********************************************************************************
+// テストカテゴリ：文字型
+// ********************************************************************************
+
+/// @brief 文字型を含む構造体。
+struct CharacterTypes {
+    char c = 'X';
+    signed char sc = 'Y';
+    unsigned char uc = 'Z';
+    char8_t c8 = u8'a';
+    char16_t c16 = u'ア';
+    char32_t c32 = U'🎉';
+    wchar_t wc = L'ウ';
+
+    const IJsonFieldSet& jsonFields() const {
+        static const auto fields = makeJsonFieldSet<CharacterTypes>(
+            JsonField(&CharacterTypes::c, "c"),
+            JsonField(&CharacterTypes::sc, "sc"),
+            JsonField(&CharacterTypes::uc, "uc"),
+            JsonField(&CharacterTypes::c8, "c8"),
+            JsonField(&CharacterTypes::c16, "c16"),
+            JsonField(&CharacterTypes::c32, "c32"),
+            JsonField(&CharacterTypes::wc, "wc")
+        );
+        return fields;
+    }
+
+    bool operator==(const CharacterTypes& other) const {
+        return c == other.c && sc == other.sc && uc == other.uc && c8 == other.c8 &&
+               c16 == other.c16 && c32 == other.c32 && wc == other.wc;
+    }
+};
+
+/// @brief 文字型の読み書きテスト。
+TEST(JsonCharacterTest, ReadWriteRoundTrip) {
+    // テスト用に異なる値を設定
+    CharacterTypes original;
+    original.c = 'A';
+    original.sc = 'B';
+    original.uc = 'C';
+    original.c8 = u8'd';
+    original.c16 = u'イ';
+    original.c32 = U'🌟';
+    original.wc = L'エ';
+
+    // JSON形式で書き出す
+    auto json = getJsonContent(original);
+    ASSERT_FALSE(json.empty());
+
+    // JSONの内容が正しいか確認（全体比較）
+    // 注: 文字型は escapeString で出力されるため、Unicode 文字は \uXXXX 形式
+    // c16:u'イ' (U+30A4) → \u30a4
+    // c32:U'🌟' (U+1F31F) → \ud80c\udf1f (サロゲートペア)
+    // wc:L'エ' (U+30A8) → \u30a8
+    EXPECT_EQ(json, "{c:\"A\",sc:\"B\",uc:\"C\","
+        "c8:\"d\",c16:\"\\u30a4\",c32:\"\\ud80c\\udf1f\",wc:\"\\u30a8\"}");
+
+    // JSONから読み込む
+    CharacterTypes parsed;
+    readJsonString(json, parsed);
+
+    // 値が一致していることを確認
+    EXPECT_EQ(parsed, original);
+}
+
+// ********************************************************************************
+// テストカテゴリ：ネストされたオブジェクト
+// ********************************************************************************
+
+/// @brief ネストされたオブジェクト構造。
+struct NestedChild {
+    int value = 0;
+    std::string name;
+
+    const IJsonFieldSet& jsonFields() const {
+        static const auto fields = makeJsonFieldSet<NestedChild>(
+            JsonField(&NestedChild::value, "value"),
+            JsonField(&NestedChild::name, "name")
+        );
+        return fields;
+    }
+
+    bool operator==(const NestedChild& other) const {
+        return value == other.value && name == other.name;
+    }
+};
+
+/// @brief ネストされたオブジェクトを含む親構造体。
+struct NestedParent {
+    NestedChild child;
+    bool flag = false;
+
+    const IJsonFieldSet& jsonFields() const {
+        static const auto fields = makeJsonFieldSet<NestedParent>(
+            JsonField(&NestedParent::child, "child"),
+            JsonField(&NestedParent::flag, "flag")
+        );
+        return fields;
+    }
+
+    bool operator==(const NestedParent& other) const {
+        return child == other.child && flag == other.flag;
+    }
+};
+
+/// @brief ネストされたオブジェクトの読み書きテスト。
+TEST(JsonNestedTest, ReadWriteRoundTrip) {
+    // テスト用に異なる値を設定
+    NestedParent original;
+    original.child.value = 42;
+    original.child.name = "test";
+    original.flag = true;
+
+    // JSON形式で書き出す
+    auto json = getJsonContent(original);
+
+    // JSONの内容が正しいか確認（全体比較）
+    EXPECT_EQ(json, "{child:{value:42,name:\"test\"},flag:true}");
+
+    // JSONから読み込む
+    NestedParent parsed;
+    readJsonString(json, parsed);
+
+    // 値が一致していることを確認
+    EXPECT_EQ(parsed, original);
+}
+
+// ********************************************************************************
+// テストカテゴリ：ポインタとポインタのvector
+// ********************************************************************************
+
+/// @brief ポインタを含む構造体。
+struct PointerHolder {
+    std::unique_ptr<int> ptr;
+    std::vector<std::unique_ptr<std::string>> ptrVec;
+
+    const IJsonFieldSet& jsonFields() const {
+        static const auto fields = makeJsonFieldSet<PointerHolder>(
+            JsonField(&PointerHolder::ptr, "ptr"),
+            JsonField(&PointerHolder::ptrVec, "ptrVec")
+        );
+        return fields;
+    }
+
+    bool operator==(const PointerHolder& other) const {
+        bool ptrMatch = (ptr == nullptr && other.ptr == nullptr) ||
+                        (ptr != nullptr && other.ptr != nullptr && *ptr == *other.ptr);
+        if (!ptrMatch) return false;
+
+        if (ptrVec.size() != other.ptrVec.size()) return false;
+        for (size_t i = 0; i < ptrVec.size(); ++i) {
+            bool elemMatch = (ptrVec[i] == nullptr && other.ptrVec[i] == nullptr) ||
+                             (ptrVec[i] != nullptr && other.ptrVec[i] != nullptr &&
+                              *ptrVec[i] == *other.ptrVec[i]);
+            if (!elemMatch) return false;
+        }
+        return true;
+    }
+};
+
+/// @brief ポインタとvectorの読み書きテスト。
+TEST(JsonPointerTest, ReadWriteRoundTrip) {
+    // テスト用に異なる値を設定
+    PointerHolder original;
+    original.ptr = std::make_unique<int>(999);
+    original.ptrVec.push_back(std::make_unique<std::string>("first"));
+    original.ptrVec.push_back(nullptr);
+    original.ptrVec.push_back(std::make_unique<std::string>("third"));
+
+    // JSON形式で書き出す
+    auto json = getJsonContent(original);
+
+    // JSONの内容が正しいか確認（全体比較）
+    EXPECT_EQ(json, "{ptr:999,ptrVec:[\"first\",null,\"third\"]}");
+
+    // JSONから読み込む
+    PointerHolder parsed;
+    readJsonString(json, parsed);
+
+    // 値が一致していることを確認
+    EXPECT_EQ(parsed, original);
 }

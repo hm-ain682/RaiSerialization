@@ -58,6 +58,14 @@ class JsonWriterBase {
         stream_ << '"';
     }
 
+    // @brief 1つのUTF-16コードユニットを \uXXXX で出力
+    void writeUnicodeEscape16(unsigned u) {
+        stream_ << "\\u";
+        char buf[5];
+        snprintf(buf, sizeof(buf), "%04x", (u & 0xFFFFu));
+        stream_ << buf;
+    }
+
     // @brief キーが識別子として有効かチェック
     // @param keyName チェックするキー名
     // @return 識別子として有効な場合true
@@ -163,6 +171,83 @@ public:
     void writeObject(bool value) {
         writeCommaIfNeeded();
         stream_ << (value ? "true" : "false");
+    }
+
+    // @brief 1文字を文字列として書き込み（エスケープ対応）
+    // @param value 書き込む値
+    void writeObject(char value) {
+        writeCommaIfNeeded();
+        char c = value;
+        escapeString(std::string_view(&c, 1));
+    }
+
+    // @brief 1バイト文字（符号付き）を文字列として書き込み
+    // @param value 書き込む値
+    void writeObject(signed char value) {
+        writeObject(static_cast<char>(value));
+    }
+
+    // @brief 1バイト文字（符号なし）を文字列として書き込み
+    // @param value 書き込む値
+    void writeObject(unsigned char value) {
+        writeObject(static_cast<char>(value));
+    }
+
+    // @brief UTF-8コードユニット（1バイト）を1文字の文字列として出力
+    void writeObject(char8_t value) {
+        writeCommaIfNeeded();
+        unsigned byte = static_cast<unsigned>(value);
+        if (byte < 0x80) {
+            char c = static_cast<char>(byte);
+            escapeString(std::string_view(&c, 1));
+        } else {
+            stream_ << '"';
+            // 非ASCIIの単一バイトは \u00XX で表現
+            writeUnicodeEscape16(0x00u | byte);
+            stream_ << '"';
+        }
+    }
+
+    // @brief UTF-16コードユニットを1文字の文字列として出力（サロゲートもそのままコードユニットとして出力）
+    void writeObject(char16_t value) {
+        writeCommaIfNeeded();
+        stream_ << '"';
+        writeUnicodeEscape16(static_cast<unsigned>(value));
+        stream_ << '"';
+    }
+
+    // @brief ワイド文字を1文字の文字列として出力
+    void writeObject(wchar_t value) {
+        if constexpr (sizeof(wchar_t) == 2) {
+            writeObject(static_cast<char16_t>(value));
+        } else {
+            writeObject(static_cast<char32_t>(value));
+        }
+    }
+
+    // @brief Unicodeスカラー値を1文字の文字列として出力
+    void writeObject(char32_t value) {
+        writeCommaIfNeeded();
+        unsigned cp = static_cast<unsigned>(value);
+        if (cp < 0x80u) {
+            char c = static_cast<char>(cp);
+            escapeString(std::string_view(&c, 1));
+            return;
+        }
+        stream_ << '"';
+        if (cp <= 0xFFFFu) {
+            writeUnicodeEscape16(cp);
+        } else if (cp <= 0x10FFFFu) {
+            unsigned v = cp - 0x10000u;
+            unsigned high = 0xD800u + (v >> 10);
+            unsigned low  = 0xDC00u + (v & 0x3FFu);
+            writeUnicodeEscape16(high);
+            writeUnicodeEscape16(low);
+        } else {
+            // 範囲外はU+FFFDにフォールバック
+            writeUnicodeEscape16(0xFFFDu);
+        }
+        stream_ << '"';
     }
 
     // @brief 整数値の書き込み
