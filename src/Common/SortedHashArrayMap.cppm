@@ -8,6 +8,7 @@ module;
 #include <optional>
 #include <algorithm>
 #include <cstring>
+#include <span>
 #include <functional>
 #include <type_traits>
 #include <cstdint>
@@ -40,6 +41,151 @@ struct KeyValue {
     ValueT value;
 };
 
+/// @brief SortedHashArrayMapで保持するエントリ情報。
+/// @tparam KeyType キーの型。
+/// @tparam ValueType 値の型。
+template <typename KeyType, typename ValueType>
+struct MapEntry {
+    KeyType key;                ///< フィールドのキー。
+    ValueType value;            ///< フィールドの値。
+    std::size_t hash;           ///< キーから計算したハッシュ値（Hash の結果）。
+    std::size_t originalIndex;  ///< 元のフィールド定義順序。
+};
+
+template <
+    typename KeyType,
+    typename ValueType,
+    std::size_t N,
+    typename Traits
+>
+class SortedHashArrayMap;
+
+/// @brief SortedHashArrayMap/MapReference が共有する探索アルゴリズム。
+/// @tparam KeyType キーの型。
+/// @tparam ValueType 値の型。
+/// @tparam Traits ハッシュ／比較の振る舞い。
+template <
+    typename KeyType,
+    typename ValueType,
+    typename Traits
+>
+struct SortedHashArrayMapAlgorithms {
+    using Hash = typename Traits::Hash;
+    using KeyEqual = typename Traits::KeyEqual;
+    using Entry = MapEntry<KeyType, ValueType>;
+
+    /// @brief 指定キーに対応するエントリの元インデックスを検索する。
+    /// @param entriesBegin エントリ配列の先頭。
+    /// @param entriesSize エントリ数。
+    /// @param key 検索キー。
+    /// @return 見つかった場合は元インデックス、未検出時はstd::nullopt。
+    template <typename Lookup>
+    static std::optional<std::size_t> findIndex(
+        std::span<const Entry> entries, const Lookup& key) {
+        const auto hash = Hash{}(key);
+
+        const auto lower = std::lower_bound(
+            entries.begin(),
+            entries.end(),
+            hash,
+            [](const Entry& entry, std::size_t hashValue) {
+                return entry.hash < hashValue;
+            });
+
+        for (auto it = lower; it != entries.end() && it->hash == hash; ++it) {
+            if (KeyEqual{}(it->key, key)) {
+                return it->originalIndex;
+            }
+        }
+        return std::nullopt;
+    }
+
+    /// @brief 指定キーに対応する値を検索する。
+    /// @param entriesBegin エントリ配列の先頭。
+    /// @param entriesSize エントリ数。
+    /// @param key 検索キー。
+    /// @return 見つかった場合は値へのポインタ、未検出時はnullptr。
+    template <typename Lookup>
+    static const ValueType* findValue(
+        std::span<const Entry> entries,
+        const Lookup& key) {
+        const auto hash = Hash{}(key);
+
+        const auto lower = std::lower_bound(
+            entries.begin(),
+            entries.end(),
+            hash,
+            [](const Entry& entry, std::size_t hashValue) {
+                return entry.hash < hashValue;
+            });
+
+        for (auto it = lower; it != entries.end() && it->hash == hash; ++it) {
+            if (KeyEqual{}(it->key, key)) {
+                return &it->value;
+            }
+        }
+        return nullptr;
+    }
+};
+
+/// @brief SortedHashArrayMapへの参照を保持する薄いラッパー（Nを型に含めない）。
+/// @tparam KeyType キーの型。
+/// @tparam ValueType 値の型。
+/// @tparam Traits ハッシュ／比較の振る舞い。
+/// @note 参照先は SortedHashArrayMap を想定する。
+template <
+    typename KeyType,
+    typename ValueType,
+    typename Traits = SortedHashArrayMapTraits<KeyType>
+>
+class MapReference {
+public:
+    using Entry = MapEntry<KeyType, ValueType>;
+    using iterator = const Entry*;
+    using Algorithms = SortedHashArrayMapAlgorithms<KeyType, ValueType, Traits>;
+
+    /// @brief デフォルトコンストラクタ。
+    /// @details 空の参照として構築する。
+    MapReference() = default;
+
+    template <std::size_t N>
+    constexpr explicit MapReference(const SortedHashArrayMap<KeyType, ValueType, N, Traits>& map) noexcept
+        : entries_(map.begin(), N) {}
+
+    /// @brief 指定キーに対応するエントリの元インデックスを検索する。
+    /// @tparam Lookup 検索キーの型。
+    /// @param key 検索キー。
+    /// @return 見つかった場合は元インデックス、未検出時はstd::nullopt。
+    template <typename Lookup>
+    std::optional<std::size_t> findIndex(const Lookup& key) const {
+        return Algorithms::findIndex(entries_, key);
+    }
+
+    /// @brief 指定キーに対応する値を検索する。
+    /// @tparam Lookup 検索キーの型。
+    /// @param key 検索キー。
+    /// @return 見つかった場合は値へのポインタ、未検出時はnullptr。
+    template <typename Lookup>
+    const ValueType* findValue(const Lookup& key) const {
+        return Algorithms::findValue(entries_, key);
+    }
+
+    /// @brief 反復の開始位置を取得する。
+    /// @return 先頭イテレータ。未設定時はnullptr。
+    iterator begin() const {
+        return entries_.data();
+    }
+
+    /// @brief 反復の終了位置を取得する。
+    /// @return 終端イテレータ。未設定時はnullptr。
+    iterator end() const {
+        return entries_.data() + entries_.size();
+    }
+
+private:
+    std::span<const Entry> entries_{}; ///< エントリ配列参照。
+};
+
 /// @brief ハッシュベースのソート済みフィールドマップ。
 /// @tparam KeyType キーの型。
 /// @tparam ValueType 値の型。
@@ -56,20 +202,10 @@ class SortedHashArrayMap {
     using KeyEqual = typename Traits::KeyEqual;
     using KeyCompare = typename Traits::KeyCompare;
 
-    // Basic static checks: require Hash/KeyEqual to be invocable with KeyType
-    static_assert(std::is_invocable_v<Hash, const KeyType&>, "Hash must be invocable with KeyType");
-    static_assert(std::is_invocable_v<KeyEqual, const KeyType&, const KeyType&>, "KeyEqual must be invocable with KeyType, KeyType");
-
 public:
-    /// @brief フィールド情報の構造体。
-    struct FieldInfo {
-        KeyType key;                ///< フィールドのキー。
-        ValueType value;            ///< フィールドの値。
-        std::size_t hash;         ///< キーから計算したハッシュ値（Hash の結果）。
-        std::size_t originalIndex;  ///< 元のフィールド定義順序。
-    };
-
+    using FieldInfo = MapEntry<KeyType, ValueType>;
     using FieldInfoArrayType = std::array<FieldInfo, N>;
+    using Algorithms = SortedHashArrayMapAlgorithms<KeyType, ValueType, Traits>;
 
     /// @brief デフォルトコンストラクタ。
     constexpr SortedHashArrayMap() = default;
@@ -108,6 +244,20 @@ public:
         sortFields();
     }
 
+    /// @brief 指定キーに対応するフィールドを探索する。
+    /// @param key 探索するキー名。
+    /// @return 見つかった場合はフィールドの元インデックス、未検出時はstd::nullopt。
+    template <typename Lookup>
+    std::optional<std::size_t> findIndex(const Lookup& key) const {
+        return Algorithms::findIndex(std::span<const FieldInfo>(sortedFields_.data(), N), key);
+    }
+
+    /// @brief 指定キーに対応する値を取得する。見つからなければ nullptr を返す。
+    template <typename Lookup>
+    const ValueType* findValue(const Lookup& key) const {
+        return Algorithms::findValue(std::span<const FieldInfo>(sortedFields_.data(), N), key);
+    }
+
 private:
     /// @brief フィールド情報を初期化する。
     /// @tparam Fields フィールドの型パラメータパック。
@@ -140,49 +290,11 @@ private:
     }
 
 public:
-    /// @brief 指定キーに対応するフィールドを探索する。
-    /// @param key 探索するキー名。
-    /// @return 見つかった場合はフィールドの元インデックス、未検出時はstd::nullopt。
-    /// @note ハッシュ値で二分探索を行い、同じハッシュ値の範囲内で線形探索する。
-    template <typename Lookup>
-    std::optional<std::size_t> findIndex(const Lookup& key) const {
-        const auto hash = Hash{}(key);
-        auto lower = std::lower_bound(
-            sortedFields_.begin(), sortedFields_.end(), hash,
-            [](const FieldInfo& info, std::size_t valueHash) {
-                return info.hash < valueHash;
-            });
-        for (auto it = lower; it != sortedFields_.end() && it->hash == hash; ++it) {
-            if (KeyEqual{}(it->key, key)) {
-                return it->originalIndex;
-            }
-        }
-        return std::nullopt;
-    }
-
-    /// @brief 指定キーに対応する値を取得する。見つからなければ nullptr を返す。
-    /// @tparam Lookup 検索キー型。
-    template <typename Lookup>
-    const ValueType* findValue(const Lookup& key) const {
-        const auto hash = Hash{}(key);
-        auto lower = std::lower_bound(
-            sortedFields_.begin(), sortedFields_.end(), hash,
-            [](const FieldInfo& info, std::size_t valueHash) {
-                return info.hash < valueHash;
-            });
-        for (auto it = lower; it != sortedFields_.end() && it->hash == hash; ++it) {
-            if (KeyEqual{}(it->key, key)) {
-                return &it->value;
-            }
-        }
-        return nullptr;
-    }
-
     using Array = std::array<FieldInfo, N>;
-    using iterator = typename Array::const_iterator;
-    using value_type = typename Array::value_type;
-    iterator begin() const { return sortedFields_.begin(); }
-    iterator end() const { return sortedFields_.end(); }
+    using iterator = const FieldInfo*;
+    using value_type = FieldInfo;
+    iterator begin() const { return sortedFields_.data(); }
+    iterator end() const { return sortedFields_.data() + N; }
 private:
     Array sortedFields_{}; ///< ハッシュ順に整列したフィールド情報。
 };
@@ -194,4 +306,4 @@ inline constexpr auto makeSortedHashArrayMap(First first, Fields... pairs) {
     return rai::collection::SortedHashArrayMap<Key, Value, sizeof...(pairs) + 1>(first, pairs...);
 }
 
-}  // namespace rai::json
+}  // namespace rai::collection

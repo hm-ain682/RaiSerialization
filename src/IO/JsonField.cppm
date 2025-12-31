@@ -1,5 +1,5 @@
-// @file JsonBinding.cppm
-// @brief JSONバインディングの定義。構造体とJSONの相互変換を提供する。
+// @file JsonField.cppm
+// @brief JSONフィールドの定義。構造体とJSONの相互変換を提供する。
 
 module;
 #include <memory>
@@ -20,13 +20,15 @@ module;
 #include <functional>
 #include <ranges>
 #include <typeinfo>
+#include <vector>
+
+export module rai.json.json_field;
 
 import rai.json.json_concepts;
 import rai.json.json_writer;
 import rai.json.json_parser;
 import rai.json.json_token_manager;
 import rai.collection.sorted_hash_array_map;
-export module rai.json.json_field;
 
 namespace rai::json {
 
@@ -62,8 +64,6 @@ template <typename T>
 struct PointerElementType<T*> {
     using type = T;
 };
-
-// (moved below, after concept definitions)
 
 /// @brief ポインタ型（unique_ptr/shared_ptr/生ポインタ）であることを確認するconcept。
 template <typename T>
@@ -185,13 +185,11 @@ export template <typename PtrType>
     requires SmartOrRawPointer<PtrType>
 using PolymorphicTypeFactory = std::function<PtrType()>;
 
-/// @brief 共通: polymorphic オブジェクト一つ分の読み取りを行うヘルパー
-/// - parser の現在位置は null または startObject のいずれかであることを期待
-/// - 成功した場合、std::unique_ptr<BaseType>（null を示す場合は nullptr）を返す
-template <typename PtrType, std::size_t N>
+/// @brief 共通: polymorphic オブジェクト一つ分の読み取りを行うヘルパー（N非依存版）
+template <typename PtrType>
     requires SmartOrRawPointer<PtrType>
 PtrType readPolymorphicInstance(JsonParser& parser,
-    const collection::SortedHashArrayMap<std::string_view, PolymorphicTypeFactory<PtrType>, N>& entriesMap,
+    const collection::MapReference<std::string_view, PolymorphicTypeFactory<PtrType>>& entriesMap,
     std::string_view jsonKey = "type") {
     using BaseType = typename PointerElementType<PtrType>::type;
     if (parser.nextIsNull()) {
@@ -241,13 +239,13 @@ PtrType readPolymorphicInstance(JsonParser& parser,
 /// @brief ポリモーフィック型（unique_ptr<基底クラス>）用のJsonField派生クラス。
 /// @tparam MemberPtr unique_ptr<基底クラス>メンバー変数へのポインタ。
 /// @tparam Entries 型名とファクトリ関数のマッピング配列への参照。
-export template <typename MemberPtrType, std::size_t N = 0>
+export template <typename MemberPtrType>
     requires SmartOrRawPointer<typename JsonField<MemberPtrType>::ValueType>
 struct JsonPolymorphicField : JsonField<MemberPtrType> {
     using Base = JsonField<MemberPtrType>;
     using typename Base::ValueType;
     using BaseType = typename PointerElementType<ValueType>::type;
-    using Map = collection::SortedHashArrayMap<std::string_view, PolymorphicTypeFactory<ValueType>, N>;
+    using Map = collection::MapReference<std::string_view, PolymorphicTypeFactory<ValueType>>;
 
     /// @brief ポリモーフィック型用フィールドのコンストラクタ。
     /// @param keyName JSONキー名。
@@ -287,7 +285,7 @@ struct JsonPolymorphicField : JsonField<MemberPtrType> {
     /// @param parser JsonParser の参照。現在の位置にオブジェクトか null があることを期待する。
     /// @return 要素型 T を保持するポインタ（unique_ptr/shared_ptr/生ポインタ）。null の場合は nullptr を返す。
     ValueType fromJson(JsonParser& parser) const {
-        return readPolymorphicInstance<ValueType, N>(parser, nameToEntry_, jsonKey_);
+        return readPolymorphicInstance<ValueType>(parser, nameToEntry_, jsonKey_);
     }
 
     /// @brief JsonWriter に対して polymorphic オブジェクトを書き出す。
@@ -316,14 +314,14 @@ private:
 };
 
 /// @brief ポリモーフィックな配列（vector<std::unique_ptr<BaseType>>）用のフィールド。
-export template <typename MemberPtrType, std::size_t N = 0>
+export template <typename MemberPtrType>
     requires VectorOfPointers<typename JsonField<MemberPtrType>::ValueType>
 struct JsonPolymorphicArrayField : JsonField<MemberPtrType> {
     using Base = JsonField<MemberPtrType>;
     using typename Base::ValueType;
     using ElementPtrType = typename ValueType::value_type; // std::unique_ptr<T>, std::shared_ptr<T>, or T*
     using BaseType = typename PointerElementType<ElementPtrType>::type;
-    using Map = collection::SortedHashArrayMap<std::string_view, PolymorphicTypeFactory<ElementPtrType>, N>;
+    using Map = collection::MapReference<std::string_view, PolymorphicTypeFactory<ElementPtrType>>;
 
     constexpr explicit JsonPolymorphicArrayField(MemberPtrType memberPtr, const char* keyName,
         const Map& entries, const char* jsonKey = "type", bool req = false)
@@ -357,7 +355,7 @@ struct JsonPolymorphicArrayField : JsonField<MemberPtrType> {
         parser.startArray();
         out.clear();
         while (!parser.nextIsEndArray()) {
-            auto elem = readPolymorphicInstance<ElementPtrType, N>(parser, nameToEntry_, jsonKey_);
+            auto elem = readPolymorphicInstance<ElementPtrType>(parser, nameToEntry_, jsonKey_);
             out.push_back(std::move(elem));
         }
         parser.endArray();
