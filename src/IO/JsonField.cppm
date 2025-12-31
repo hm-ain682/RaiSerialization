@@ -245,14 +245,25 @@ struct JsonPolymorphicField : JsonField<MemberPtrType> {
     using Base = JsonField<MemberPtrType>;
     using typename Base::ValueType;
     using BaseType = typename PointerElementType<ValueType>::type;
-    using Map = collection::MapReference<std::string_view, PolymorphicTypeFactory<ValueType>>;
+    using Key = std::string_view;
+    using Value = PolymorphicTypeFactory<ValueType>;
+    using Map = collection::MapReference<Key, Value>;
 
     /// @brief ポリモーフィック型用フィールドのコンストラクタ。
     /// @param keyName JSONキー名。
     /// @param req 必須フィールドかどうか。
     // コンストラクタ: 書式は (memberPtr, keyName, entriesArray, req=false)
     constexpr explicit JsonPolymorphicField(MemberPtrType memberPtr, const char* keyName,
-        const Map& entries, const char* jsonKey = "type", bool req = false)
+        Map entries, const char* jsonKey = "type", bool req = false)
+        : Base(memberPtr, keyName, req), nameToEntry_(entries), jsonKey_(jsonKey) {}
+
+    /// @brief ポリモーフィック型用フィールドのコンストラクタ。
+    /// @param keyName JSONキー名。
+    /// @param req 必須フィールドかどうか。
+    // コンストラクタ: 書式は (memberPtr, keyName, entriesArray, req=false)
+    template <size_t N, typename Traits>
+    constexpr explicit JsonPolymorphicField(MemberPtrType memberPtr, const char* keyName,
+        const collection::SortedHashArrayMap<Key, Value, N, Traits>& entries, const char* jsonKey = "type", bool req = false)
         : Base(memberPtr, keyName, req), nameToEntry_(entries), jsonKey_(jsonKey) {}
 
     /// @brief 型名から対応するエントリを検索する。
@@ -307,7 +318,7 @@ struct JsonPolymorphicField : JsonField<MemberPtrType> {
 
 private:
     //! entries は typeName -> entry のマップ参照として保持
-    const Map& nameToEntry_;
+    Map nameToEntry_;
 
     //! JSON 内で型を判別するためのキー名（デフォルトは "type"）
     const char* jsonKey_;
@@ -321,11 +332,18 @@ struct JsonPolymorphicArrayField : JsonField<MemberPtrType> {
     using typename Base::ValueType;
     using ElementPtrType = typename ValueType::value_type; // std::unique_ptr<T>, std::shared_ptr<T>, or T*
     using BaseType = typename PointerElementType<ElementPtrType>::type;
-    using Map = collection::MapReference<std::string_view, PolymorphicTypeFactory<ElementPtrType>>;
+    using Key = std::string_view;
+    using Value = PolymorphicTypeFactory<ElementPtrType>;
+    using Map = collection::MapReference<Key, Value>;
 
     constexpr explicit JsonPolymorphicArrayField(MemberPtrType memberPtr, const char* keyName,
-        const Map& entries, const char* jsonKey = "type", bool req = false)
+        Map entries, const char* jsonKey = "type", bool req = false)
         : Base(memberPtr, keyName, req), nameToEntry_(entries), jsonKey_(jsonKey) {}
+
+    template <size_t N, typename Traits>
+    constexpr explicit JsonPolymorphicArrayField(MemberPtrType memberPtr, const char* keyName,
+        const collection::SortedHashArrayMap<Key, Value, N, Traits>& entries, const char* jsonKey = "type", bool req = false)
+        : Base(memberPtr, keyName, req), nameToEntry_(Map(entries)), jsonKey_(jsonKey) {}
 
     const PolymorphicTypeFactory<ElementPtrType>* findEntry(std::string_view typeName) const {
         return nameToEntry_.findValue(typeName);
@@ -384,7 +402,7 @@ struct JsonPolymorphicArrayField : JsonField<MemberPtrType> {
     }
 
 private:
-    const Map& nameToEntry_;
+    Map nameToEntry_;
 
     //! JSON 内で型を判別するためのキー名
     const char* jsonKey_;
