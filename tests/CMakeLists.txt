@@ -35,6 +35,10 @@ endforeach()
 
 # Build the more extensive tests
 add_executable(RaiJson_JsonTest JsonTest.cpp)
+target_sources(RaiJson_JsonTest PRIVATE
+  FILE_SET CXX_MODULES FILES
+    JsonTestHelper.cppm
+)
 target_link_libraries(RaiJson_JsonTest PRIVATE RaiJson::RaiJson gtest_main)
 add_test(NAME RaiJson_JsonTest COMMAND RaiJson_JsonTest)
 

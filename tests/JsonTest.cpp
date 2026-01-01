@@ -2,6 +2,7 @@ import rai.json.json_field;
 import rai.json.json_writer;
 import rai.json.json_binding;
 import rai.json.json_io;
+import rai.json.test_helper;
 import rai.collection.sorted_hash_array_map;
 #include <gtest/gtest.h>
 #include <string>
@@ -9,6 +10,7 @@ import rai.collection.sorted_hash_array_map;
 #include <tuple>
 
 using namespace rai::json;
+using namespace rai::json::test;
 
 /// @brief テスト用の構造体A。
 struct A {
@@ -155,27 +157,13 @@ struct Holder {
 };
 
 TEST(JsonPolymorphicTest, ReadSingleCustomKey) {
-    // テスト用に値を設定
     Holder original;
     original.item = std::make_unique<POne>();
     dynamic_cast<POne*>(original.item.get())->x = 42;
-
-    // JSON形式で書き出す
-    auto json = getJsonContent(original);
-
-    // JSONの内容が正しいか確認（全体比較）
-    EXPECT_EQ(json, "{item:{kind:\"One\",x:42},arr:[]}");
-
-    // JSONから読み込む
-    Holder parsed;
-    readJsonString(json, parsed);
-
-    // 元オブジェクトと比較（粗論的に検証）
-    EXPECT_EQ(parsed, original);
+    testJsonRoundTrip(original, "{item:{kind:\"One\",x:42},arr:[]}");
 }
 
 TEST(JsonPolymorphicTest, ReadArrayCustomKeyAndNull) {
-    // テスト用に値を設定
     Holder original;
     auto one = std::make_unique<POne>();
     one->x = 1;
@@ -184,42 +172,17 @@ TEST(JsonPolymorphicTest, ReadArrayCustomKeyAndNull) {
     auto two = std::make_unique<PTwo>();
     two->s = "abc";
     original.arr.push_back(std::move(two));
-
     original.arr.push_back(nullptr);
 
-    // JSON形式で書き出す
-    auto json = getJsonContent(original);
-
-    // JSONの内容が正しいか確認（全体比較）
-    EXPECT_EQ(json, "{item:null,arr:[{kind:\"One\",x:1},{kind:\"Two\",s:\"abc\"},null]}");
-
-    // JSONから読み込む
-    Holder parsed;
-    readJsonString(json, parsed);
-
-    // 元オブジェクトと比較（粗論的に検証）
-    EXPECT_EQ(parsed, original);
+    testJsonRoundTrip(original, "{item:null,arr:[{kind:\"One\",x:1},{kind:\"Two\",s:\"abc\"},null]}");
 }
 
 TEST(JsonPolymorphicTest, WriteAndReadRoundTripUsingCustomKey) {
-    // テスト用に値を設定
     auto one = std::make_unique<POne>();
     one->x = 99;
     Holder original;
     original.item = std::move(one);
-
-    // JSON形式で書き出す
-    auto json = getJsonContent(original);
-
-    // JSONの内容が正しいか確認（全体比較）
-    EXPECT_EQ(json, "{item:{kind:\"One\",x:99},arr:[]}");
-
-    // JSONから読み込む
-    Holder parsed;
-    readJsonString(json, parsed);
-
-    // 元オブジェクトと比較（粗論的に検証）
-    EXPECT_EQ(parsed, original);
+    testJsonRoundTrip(original, "{item:{kind:\"One\",x:99},arr:[]}");
 }
 
 // ********************************************************************************
@@ -259,7 +222,6 @@ struct IntegerTypes {
 
 /// @brief 整数型の読み書きテスト。
 TEST(JsonIntegerTest, ReadWriteRoundTrip) {
-    // テスト用に異なる値を設定
     IntegerTypes original;
     original.s = -1000;
     original.us = 2000;
@@ -269,12 +231,7 @@ TEST(JsonIntegerTest, ReadWriteRoundTrip) {
     original.ul = 3000000000UL;
     original.ll = 1234567890123456LL;
     original.ull = 9876543210987654ULL;
-
-    // JSON形式で書き出す
-    auto json = getJsonContent(original);
-
-    // JSONの内容が正しいか確認（全体比較）
-    EXPECT_EQ(json, "{s:-1000,"
+    testJsonRoundTrip(original, "{s:-1000,"
         "us:2000,"
         "i:-3000000,"
         "ui:4000000,"
@@ -282,13 +239,6 @@ TEST(JsonIntegerTest, ReadWriteRoundTrip) {
         "ul:3000000000,"
         "ll:1234567890123456,"
         "ull:9876543210987654}");
-
-    // JSONから読み込む
-    IntegerTypes parsed;
-    readJsonString(json, parsed);
-
-    // 値が一致していることを確認
-    EXPECT_EQ(parsed, original);
 }
 
 // ********************************************************************************
@@ -317,26 +267,12 @@ struct FloatingPointTypes {
 
 /// @brief 浮動小数点数型の読み書きテスト。
 TEST(JsonFloatingPointTest, ReadWriteRoundTrip) {
-    // テスト用に異なる値を設定
     FloatingPointTypes original;
     original.f = 1.5f;
     original.d = -2.75;
     original.ld = 3.125L;
 
-    // JSON形式で書き出す
-    auto json = getJsonContent(original);
-
-    // JSONの内容が正しいか確認（全体比較）
-    EXPECT_EQ(json, "{f:1.5,d:-2.75,ld:3.125}");
-
-    // JSONから読み込む
-    FloatingPointTypes parsed;
-    readJsonString(json, parsed);
-
-    // 値が一致していることを確認
-    EXPECT_FLOAT_EQ(parsed.f, original.f);
-    EXPECT_DOUBLE_EQ(parsed.d, original.d);
-    EXPECT_DOUBLE_EQ(static_cast<double>(parsed.ld), static_cast<double>(original.ld));
+    testJsonRoundTrip(original, "{f:1.5,d:-2.75,ld:3.125}");
 }
 
 // ********************************************************************************
@@ -374,7 +310,6 @@ struct CharacterTypes {
 
 /// @brief 文字型の読み書きテスト。
 TEST(JsonCharacterTest, ReadWriteRoundTrip) {
-    // テスト用に異なる値を設定
     CharacterTypes original;
     original.c = 'A';
     original.sc = 'B';
@@ -384,24 +319,12 @@ TEST(JsonCharacterTest, ReadWriteRoundTrip) {
     original.c32 = U'\u00E9';
     original.wc = L'\u00E8';
 
-    // JSON形式で書き出す
-    auto json = getJsonContent(original);
-    ASSERT_FALSE(json.empty());
-
-    // JSONの内容が正しいか確認（全体比較）
     // 注: 文字型は escapeString で出力されるため、Unicode 文字は \uXXXX 形式
     // c16:u'ア' (U+30A2) → \u30a2 (BMP範囲のみ対応。補助平面はサロゲートペアが必要だがchar16_tではサポートされない)
     // c32:U'é' (U+00E9) → \u00e9 (char32_tで完全サポート)
     // wc:L'è' (U+00E8) → \u00e8
-    EXPECT_EQ(json, "{c:\"A\",sc:\"B\",uc:\"C\","
+    testJsonRoundTrip(original, "{c:\"A\",sc:\"B\",uc:\"C\"," \
         "c8:\"d\",c16:\"\\u30a2\",c32:\"\\u00e9\",wc:\"\\u00e8\"}");
-
-    // JSONから読み込む
-    CharacterTypes parsed;
-    readJsonString(json, parsed);
-
-    // 値が一致していることを確認
-    EXPECT_EQ(parsed, original);
 }
 
 // サロゲートペア形式の JSON 文字列（\ud83c\udf89 = 🎉, U+1F389）
@@ -485,18 +408,7 @@ TEST(JsonNestedTest, ReadWriteRoundTrip) {
     original.child.name = "test";
     original.flag = true;
 
-    // JSON形式で書き出す
-    auto json = getJsonContent(original);
-
-    // JSONの内容が正しいか確認（全体比較）
-    EXPECT_EQ(json, "{child:{value:42,name:\"test\"},flag:true}");
-
-    // JSONから読み込む
-    NestedParent parsed;
-    readJsonString(json, parsed);
-
-    // 値が一致していることを確認
-    EXPECT_EQ(parsed, original);
+    testJsonRoundTrip(original, "{child:{value:42,name:\"test\"},flag:true}");
 }
 
 // ********************************************************************************
@@ -541,16 +453,5 @@ TEST(JsonPointerTest, ReadWriteRoundTrip) {
     original.ptrVec.push_back(nullptr);
     original.ptrVec.push_back(std::make_unique<std::string>("third"));
 
-    // JSON形式で書き出す
-    auto json = getJsonContent(original);
-
-    // JSONの内容が正しいか確認（全体比較）
-    EXPECT_EQ(json, "{ptr:999,ptrVec:[\"first\",null,\"third\"]}");
-
-    // JSONから読み込む
-    PointerHolder parsed;
-    readJsonString(json, parsed);
-
-    // 値が一致していることを確認
-    EXPECT_EQ(parsed, original);
+    testJsonRoundTrip(original, "{ptr:999,ptrVec:[\"first\",null,\"third\"]}");
 }

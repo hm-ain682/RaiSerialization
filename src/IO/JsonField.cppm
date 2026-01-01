@@ -252,18 +252,17 @@ struct JsonPolymorphicField : JsonField<MemberPtrType> {
     /// @brief ポリモーフィック型用フィールドのコンストラクタ。
     /// @param keyName JSONキー名。
     /// @param req 必須フィールドかどうか。
-    // コンストラクタ: 書式は (memberPtr, keyName, entriesArray, req=false)
     constexpr explicit JsonPolymorphicField(MemberPtrType memberPtr, const char* keyName,
-        Map entries, const char* jsonKey = "type", bool req = false)
+        Map entries, const char* jsonKey = "type", bool req = true)
         : Base(memberPtr, keyName, req), nameToEntry_(entries), jsonKey_(jsonKey) {}
 
     /// @brief ポリモーフィック型用フィールドのコンストラクタ。
     /// @param keyName JSONキー名。
     /// @param req 必須フィールドかどうか。
-    // コンストラクタ: 書式は (memberPtr, keyName, entriesArray, req=false)
     template <size_t N, typename Traits>
     constexpr explicit JsonPolymorphicField(MemberPtrType memberPtr, const char* keyName,
-        const collection::SortedHashArrayMap<Key, Value, N, Traits>& entries, const char* jsonKey = "type", bool req = false)
+        const collection::SortedHashArrayMap<Key, Value, N, Traits>& entries,
+        const char* jsonKey = "type", bool req = true)
         : Base(memberPtr, keyName, req), nameToEntry_(entries), jsonKey_(jsonKey) {}
 
     /// @brief 型名から対応するエントリを検索する。
@@ -337,12 +336,13 @@ struct JsonPolymorphicArrayField : JsonField<MemberPtrType> {
     using Map = collection::MapReference<Key, Value>;
 
     constexpr explicit JsonPolymorphicArrayField(MemberPtrType memberPtr, const char* keyName,
-        Map entries, const char* jsonKey = "type", bool req = false)
+        Map entries, const char* jsonKey = "type", bool req = true)
         : Base(memberPtr, keyName, req), nameToEntry_(entries), jsonKey_(jsonKey) {}
 
     template <size_t N, typename Traits>
     constexpr explicit JsonPolymorphicArrayField(MemberPtrType memberPtr, const char* keyName,
-        const collection::SortedHashArrayMap<Key, Value, N, Traits>& entries, const char* jsonKey = "type", bool req = false)
+        const collection::SortedHashArrayMap<Key, Value, N, Traits>& entries,
+        const char* jsonKey = "type", bool req = true)
         : Base(memberPtr, keyName, req), nameToEntry_(Map(entries)), jsonKey_(jsonKey) {}
 
     const PolymorphicTypeFactory<ElementPtrType>* findEntry(std::string_view typeName) const {
