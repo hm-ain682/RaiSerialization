@@ -72,6 +72,7 @@ struct C : public A {
 
 struct PB {
     virtual ~PB() = default;
+
     virtual const IJsonFieldSet& jsonFields() const {
         static const auto f = makeJsonFieldSet<PB>();
         return f;
@@ -85,6 +86,7 @@ struct PB {
 
 struct POne : public PB {
     int x = 0;
+
     const IJsonFieldSet& jsonFields() const override {
         static const auto f = makeJsonFieldSet<POne>(
             JsonField(&POne::x, "x")
@@ -100,6 +102,7 @@ struct POne : public PB {
 
 struct PTwo : public PB {
     std::string s;
+
     const IJsonFieldSet& jsonFields() const override {
         static const auto f = makeJsonFieldSet<PTwo>(
             JsonField(&PTwo::s, "s")
@@ -133,15 +136,16 @@ struct Holder {
         return fields;
     }
 
-    bool operator==(const Holder& other) const {
-        // item フィールドの比較
+    /// @brief 他インスタンスとの同値判定。
+    /// @param other 比較対象。
+    /// @return 同値ならtrue。
+    bool equals(const Holder& other) const {
         bool itemMatch = (item == nullptr && other.item == nullptr) ||
             (item != nullptr && other.item != nullptr && *item == *other.item);
         if (!itemMatch) {
             return false;
         }
 
-        // arr フィールドの比較
         if (arr.size() != other.arr.size()) {
             return false;
         }
@@ -214,7 +218,10 @@ struct IntegerTypes {
         return fields;
     }
 
-    bool operator==(const IntegerTypes& other) const {
+    /// @brief 他インスタンスとの同値判定。
+    /// @param other 比較対象。
+    /// @return 同値ならtrue。
+    bool equals(const IntegerTypes& other) const {
         return s == other.s && us == other.us && i == other.i && ui == other.ui &&
                l == other.l && ul == other.ul && ll == other.ll && ull == other.ull;
     }
@@ -260,7 +267,10 @@ struct FloatingPointTypes {
         return fields;
     }
 
-    bool operator==(const FloatingPointTypes& other) const {
+    /// @brief 他インスタンスとの同値判定。
+    /// @param other 比較対象。
+    /// @return 同値ならtrue。
+    bool equals(const FloatingPointTypes& other) const {
         return f == other.f && d == other.d && ld == other.ld;
     }
 };
@@ -302,7 +312,10 @@ struct CharacterTypes {
         return fields;
     }
 
-    bool operator==(const CharacterTypes& other) const {
+    /// @brief 他インスタンスとの同値判定。
+    /// @param other 比較対象。
+    /// @return 同値ならtrue。
+    bool equals(const CharacterTypes& other) const {
         return c == other.c && sc == other.sc && uc == other.uc && c8 == other.c8 &&
                c16 == other.c16 && c32 == other.c32 && wc == other.wc;
     }
@@ -395,7 +408,10 @@ struct NestedParent {
         return fields;
     }
 
-    bool operator==(const NestedParent& other) const {
+    /// @brief 他インスタンスとの同値判定。
+    /// @param other 比較対象。
+    /// @return 同値ならtrue。
+    bool equals(const NestedParent& other) const {
         return child == other.child && flag == other.flag;
     }
 };
@@ -428,17 +444,26 @@ struct PointerHolder {
         return fields;
     }
 
-    bool operator==(const PointerHolder& other) const {
+    /// @brief 他インスタンスとの同値判定。
+    /// @param other 比較対象。
+    /// @return 同値ならtrue。
+    bool equals(const PointerHolder& other) const {
         bool ptrMatch = (ptr == nullptr && other.ptr == nullptr) ||
                         (ptr != nullptr && other.ptr != nullptr && *ptr == *other.ptr);
-        if (!ptrMatch) return false;
+        if (!ptrMatch) {
+            return false;
+        }
 
-        if (ptrVec.size() != other.ptrVec.size()) return false;
+        if (ptrVec.size() != other.ptrVec.size()) {
+            return false;
+        }
         for (size_t i = 0; i < ptrVec.size(); ++i) {
             bool elemMatch = (ptrVec[i] == nullptr && other.ptrVec[i] == nullptr) ||
                              (ptrVec[i] != nullptr && other.ptrVec[i] != nullptr &&
                               *ptrVec[i] == *other.ptrVec[i]);
-            if (!elemMatch) return false;
+            if (!elemMatch) {
+                return false;
+            }
         }
         return true;
     }

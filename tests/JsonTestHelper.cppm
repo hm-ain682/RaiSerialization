@@ -11,7 +11,7 @@ import rai.json.json_concepts;
 export namespace rai::json::test {
 
 /// @brief オブジェクトをJSON形式で書き出し、仕様との一致を確認し、読み込んで元と比較する。
-/// @tparam T テスト対象の型。HasJsonFieldsを満たす必要がある。
+/// @tparam T テスト対象の型。HasJsonFieldsを満たし、equalメソッドで同値判定できる必要がある。
 /// @param original 元のオブジェクト。
 /// @param expectedJson 期待されるJSON文字列。
 /// @note この関数は以下の手順を実行する：
@@ -21,7 +21,7 @@ export namespace rai::json::test {
 ///       4. 元のオブジェクトと内容が一致していることを確認
 template <typename T>
     requires HasJsonFields<T> &&
-             requires(const T& a, const T& b) { { a == b } -> std::convertible_to<bool>; }
+             requires(const T& a, const T& b) { { a.equals(b) } -> std::convertible_to<bool>; }
 void testJsonRoundTrip(const T& original, const std::string& expectedJson) {
     // JSON形式で書き出す
     auto json = getJsonContent(original);
@@ -34,7 +34,7 @@ void testJsonRoundTrip(const T& original, const std::string& expectedJson) {
     readJsonString(json, parsed);
 
     // 元のオブジェクトと内容が一致していることを確認
-    EXPECT_EQ(parsed, original);
+    EXPECT_TRUE(parsed.equals(original));
 }
 
 } // namespace rai::json::test
