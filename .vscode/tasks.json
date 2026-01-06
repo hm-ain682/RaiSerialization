@@ -2,6 +2,21 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "configure (clang, ninja, debug)",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "--preset",
+        "clang-ninja"
+      ],
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
       "label": "build RaiJson_JsonTest",
       "type": "shell",
       "command": "cmake",
