@@ -62,6 +62,21 @@ using StrVal = std::string;
 
 }  // namespace json_token_detail
 
+// @brief JSONトークンの種類を表す列挙型
+enum class JsonTokenType {
+    EndOfStream,    ///< 入力ストリーム終端
+    Null,           ///< null値
+    Bool,           ///< 真偽値
+    Integer,        ///< 整数値
+    Number,         ///< 浮動小数点数値
+    String,         ///< 文字列値
+    Key,            ///< キー名
+    StartObject,    ///< オブジェクト開始
+    EndObject,      ///< オブジェクト終了
+    StartArray,     ///< 配列開始
+    EndArray        ///< 配列終了
+};
+
 // @brief JSONトークンのvariant表現
 // @note 内部実装の詳細型はjson_token_detail名前空間に隠蔽されている
 using JsonTokenValue =

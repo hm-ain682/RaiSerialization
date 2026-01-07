@@ -38,8 +38,16 @@ public:
     // ******************************************************************************** トークン読み取り
 public:
     // @brief 次のトークンの開始位置を返す。
+    // @return 次のトークンの入力ストリーム内での開始位置
     std::size_t nextPosition() const {
         return peekToken().position;
+    }
+
+    // @brief 次のトークンの種類を返す。
+    // @return 次のトークンの種類を示すJsonTokenType値
+    JsonTokenType nextTokenType() const {
+        // JsonTokenValueとJsonTokenTypeの列挙値の順序が一致していることを前提とする
+        return static_cast<JsonTokenType>(peekToken().value.index());
     }
 
     // 構造トークン
