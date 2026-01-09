@@ -186,19 +186,12 @@ export template <typename PtrType>
 using PolymorphicTypeFactory = std::function<PtrType()>;
 
 /// @brief 共通: polymorphic オブジェクト一つ分の読み取りを行うヘルパー（N非依存版）
-template <typename PtrType>
+export template <typename PtrType>
     requires SmartOrRawPointer<PtrType>
 PtrType readPolymorphicInstance(JsonParser& parser,
     const collection::MapReference<std::string_view, PolymorphicTypeFactory<PtrType>>& entriesMap,
     std::string_view jsonKey = "type") {
-    using BaseType = typename PointerElementType<PtrType>::type;
-    if (parser.nextIsNull()) {
-        parser.skipValue();
-        return nullptr;
-    }
-
     parser.startObject();
-
     std::string typeKey = parser.nextKey();
     if (typeKey != jsonKey) {
         throw std::runtime_error(std::string("Expected '") + std::string(jsonKey) + "' key for polymorphic object, got '" + typeKey + "'");
@@ -206,14 +199,13 @@ PtrType readPolymorphicInstance(JsonParser& parser,
 
     std::string typeName;
     parser.readTo(typeName);
-
     const auto* entryPtr = entriesMap.findValue(typeName);
     if (!entryPtr) {
         throw std::runtime_error(std::string("Unknown polymorphic type: ") + typeName);
     }
 
     auto tmp = (*entryPtr)();
-
+    using BaseType = typename PointerElementType<PtrType>::type;
     if constexpr (HasJsonFields<BaseType>) {
         auto& fields = tmp->jsonFields();
         BaseType* raw = std::to_address(tmp);
@@ -234,6 +226,21 @@ PtrType readPolymorphicInstance(JsonParser& parser,
 
     parser.endObject();
     return tmp;
+}
+
+/// @brief 共通: polymorphic オブジェクト一つ分の読み取りを行うヘルパー（N非依存版）
+template <typename PtrType>
+    requires SmartOrRawPointer<PtrType>
+PtrType readPolymorphicInstanceOrNull(JsonParser& parser,
+    const collection::MapReference<std::string_view, PolymorphicTypeFactory<PtrType>>& entriesMap,
+    std::string_view jsonKey = "type") {
+    if (parser.nextIsNull()) {
+        parser.skipValue();
+        return nullptr;
+    }
+    else{
+        return readPolymorphicInstance<PtrType>(parser, entriesMap, jsonKey);
+    }
 }
 
 /// @brief ポリモーフィック型（unique_ptr<基底クラス>）用のJsonField派生クラス。
@@ -295,7 +302,7 @@ struct JsonPolymorphicField : JsonField<MemberPtrType> {
     /// @param parser JsonParser の参照。現在の位置にオブジェクトか null があることを期待する。
     /// @return 要素型 T を保持するポインタ（unique_ptr/shared_ptr/生ポインタ）。null の場合は nullptr を返す。
     ValueType fromJson(JsonParser& parser) const {
-        return readPolymorphicInstance<ValueType>(parser, nameToEntry_, jsonKey_);
+        return readPolymorphicInstanceOrNull<ValueType>(parser, nameToEntry_, jsonKey_);
     }
 
     /// @brief JsonWriter に対して polymorphic オブジェクトを書き出す。
@@ -373,7 +380,7 @@ struct JsonPolymorphicArrayField : JsonField<MemberPtrType> {
         parser.startArray();
         out.clear();
         while (!parser.nextIsEndArray()) {
-            auto elem = readPolymorphicInstance<ElementPtrType>(parser, nameToEntry_, jsonKey_);
+            auto elem = readPolymorphicInstanceOrNull<ElementPtrType>(parser, nameToEntry_, jsonKey_);
             out.push_back(std::move(elem));
         }
         parser.endArray();
