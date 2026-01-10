@@ -15,7 +15,7 @@ module;
 export module rai.json.json_io;
 
 import rai.json.json_concepts;
-import rai.json.json_binding;
+import rai.json.json_field_set;
 import rai.json.json_writer;
 import rai.json.json_parser;
 import rai.json.json_tokenizer;

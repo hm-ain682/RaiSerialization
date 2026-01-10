@@ -41,7 +41,7 @@ target_link_libraries(app PRIVATE RaiJson::RaiJson)
 ## Quick example
 ```cpp
 import rai.json.json_field;
-import rai.json.json_binding;
+import rai.json.json_field_set;
 import rai.json.json_io;
 
 struct Point {
@@ -72,7 +72,7 @@ int main() {
 - `src/IO/JsonParser.cppm`: Token-based parser that builds values with strict type checks and unknown-key tracking.
 - `src/IO/JsonWriter.cppm`: JSON5 writer with identifier-aware key emission and escaping.
 - `src/IO/JsonField.cppm`: Field descriptors including enum and polymorphic support.
-- `src/IO/JsonBinding.cppm`: Field-set reflection, (de)serialization glue, and polymorphic dispatch.
+- `src/IO/JsonFieldSet.cppm`: Field-set reflection, (de)serialization glue, and polymorphic dispatch.
 - `src/IO/JsonIO.cppm`: High-level read/write helpers for strings, files, and streams.
 
 ## License

@@ -1,5 +1,5 @@
-// @file JsonBinding.cppm
-// @brief JSONバインディングの定義。構造体とJSONの相互変換を提供する。
+// @file JsonFieldSet.cppm
+// @brief JSONフィールドセットの定義。構造体とJSONの相互変換を提供する。
 
 module;
 #include <memory>
@@ -26,7 +26,7 @@ import rai.json.json_concepts;
 import rai.json.json_writer;
 import rai.json.json_parser;
 import rai.json.json_token_manager;
-export module rai.json.json_binding;
+export module rai.json.json_field_set;
 
 namespace rai::json {
 
