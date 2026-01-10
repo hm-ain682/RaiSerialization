@@ -585,3 +585,92 @@ TEST(JsonTokenDispatchTest, ReadWriteFalse) {
     testJsonRoundTrip(original, "{value:false}");
 }
 
+// ********************************************************************************
+// HasReadJson/HasWriteJson テスト
+// ********************************************************************************
+
+/// @brief readJson/writeJsonメソッドを持つテスト用構造体。
+struct CustomJsonType {
+    int value = 0;
+    std::string name;
+
+    /// @brief JSONへの書き出し。
+    /// @param writer JsonWriterの参照。
+    void writeJson(JsonWriter& writer) const {
+        writer.startObject();
+        writer.key("value");
+        writer.writeObject(value);
+        writer.key("name");
+        writer.writeObject(name);
+        writer.endObject();
+    }
+
+    /// @brief JSONからの読み込み。
+    /// @param parser JsonParserの参照。
+    void readJson(JsonParser& parser) {
+        parser.startObject();
+        while (!parser.nextIsEndObject()) {
+            auto key = parser.nextKey();
+            if (key == "value") {
+                parser.readTo(value);
+            } else if (key == "name") {
+                parser.readTo(name);
+            } else {
+                parser.skipValue();
+            }
+        }
+        parser.endObject();
+    }
+
+    /// @brief 同値判定。
+    /// @param other 比較対象。
+    /// @return 同値ならtrue。
+    bool equals(const CustomJsonType& other) const {
+        return value == other.value && name == other.name;
+    }
+};
+
+/// @brief HasWriteJson版getJsonContentのテスト。
+TEST(HasReadWriteJsonTest, GetJsonContent) {
+    CustomJsonType obj;
+    obj.value = 42;
+    obj.name = "test";
+    auto json = getJsonContent(obj);
+    EXPECT_EQ(json, "{value:42,name:\"test\"}");
+}
+
+/// @brief HasReadJson版readJsonStringのテスト。
+TEST(HasReadWriteJsonTest, ReadJsonString) {
+    CustomJsonType obj;
+    readJsonString("{value:123,name:\"hello\"}", obj);
+    EXPECT_EQ(obj.value, 123);
+    EXPECT_EQ(obj.name, "hello");
+}
+
+/// @brief HasReadJson版readJsonFileのテスト。
+TEST(HasReadWriteJsonTest, ReadJsonFile) {
+    // 一時ファイルにJSONを書き込む
+    std::string filename = "test_custom_json.json";
+    {
+        std::ofstream ofs(filename);
+        ofs << "{value:999,name:\"from_file\"}";
+    }
+
+    // ファイルから読み込む
+    CustomJsonType obj;
+    readJsonFile(filename, obj);
+
+    EXPECT_EQ(obj.value, 999);
+    EXPECT_EQ(obj.name, "from_file");
+
+    // 一時ファイルを削除
+    std::remove(filename.c_str());
+}
+
+/// @brief HasReadJson版readJsonFileのラウンドトリップテスト。
+TEST(HasReadWriteJsonTest, RoundTrip) {
+    CustomJsonType original;
+    original.value = 42;
+    original.name = "test";
+    testJsonRoundTrip(original, "{value:42,name:\"test\"}");
+}

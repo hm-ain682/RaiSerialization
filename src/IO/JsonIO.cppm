@@ -344,5 +344,43 @@ void readJsonString(const std::string& jsonText, T& out) {
     out.readJson(parser);
 }
 
+/// @brief readJsonメソッドを持つ型をJSONファイルから読み込む。
+/// @tparam T readJsonメソッドを持つ型。
+/// @param filename 入力元のファイル名。
+/// @param out 読み込み先のオブジェクト。
+export template <HasReadJson T>
+void readJsonFile(const std::string& filename, T& out) {
+    std::ifstream ifs(filename, std::ios::binary);
+    if (!ifs.is_open()) {
+        throw std::runtime_error("readJsonFile: Cannot open file " + filename);
+    }
+
+    // ファイルサイズを取得
+    ifs.seekg(0, std::ios::end);
+    std::streamsize fileSize = ifs.tellg();
+    ifs.seekg(0, std::ios::beg);
+
+    // バッファに読み込み
+    std::string buffer;
+    buffer.reserve(fileSize + aheadSize);
+    buffer.resize(fileSize);
+    ifs.read(buffer.data(), buffer.capacity());
+    auto bytesRead = ifs.gcount();
+    if (ifs.bad()) {
+        throw std::runtime_error("readJsonFile: Error reading from file " + filename);
+    }
+    buffer.resize(bytesRead);
+
+    // トークン化とパース
+    ReadingAheadBuffer inputSource(std::move(buffer), aheadSize);
+    JsonTokenManager tokenManager;
+    StdoutMessageOutput warningOutput;
+    JsonTokenizer<ReadingAheadBuffer, JsonTokenManager> tokenizer(
+        inputSource, tokenManager, warningOutput);
+    tokenizer.tokenize();
+
+    JsonParser parser(tokenManager);
+    out.readJson(parser);
+}
 
 }  // namespace rai::json
