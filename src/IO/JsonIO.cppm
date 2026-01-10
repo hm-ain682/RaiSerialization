@@ -69,13 +69,13 @@ void writeJsonFile(const T& obj, const std::string& filename) {
     }
 }
 
-/// @brief vector<char>バッファからオブジェクトを読み込む（コア関数）。
+/// @brief 文字列バッファからオブジェクトを読み込む（コア関数）。
 /// @tparam T 読み込み対象の型。
 /// @param buffer 入力バッファ（ReadingAheadBuffer用の先読み領域を含む容量が必要）。
 /// @param out 読み込み先のオブジェクト。
 /// @param unknownKeysOut 未知キーの収集先。
 template <HasJsonFields T>
-void readJsonFromBuffer(std::vector<char>&& buffer, T& out,
+void readJsonFromBuffer(std::string&& buffer, T& out,
     std::vector<std::string>& unknownKeysOut) {
     ReadingAheadBuffer inputSource(std::move(buffer), aheadSize);
     JsonTokenManager tokenManager;
@@ -101,8 +101,7 @@ void readJsonImpl(std::istream& inputStream, T& out,
         throw std::runtime_error("readJsonImpl: Failed to read from input stream");
     }
 
-    std::string content = oss.str();
-    std::vector<char> buffer(content.begin(), content.end());
+    std::string buffer = oss.str();
     buffer.reserve(buffer.size() + aheadSize);
 
     readJsonFromBuffer(std::move(buffer), out, unknownKeysOut);
@@ -138,12 +137,12 @@ void readJsonFileSequentialImpl(std::ifstream& ifs, const std::string& filename,
     std::streamsize fileSize, std::vector<std::string>& unknownKeysOut) {
     // どうしてこの実装にしたか：ファイルを一括読み込みしてからトークン化する方が、
     // 小〜中規模ファイルではスレッド同期オーバーヘッドを回避できるため高速
-    std::vector<char> buffer;
+    std::string buffer;
     buffer.reserve(fileSize + aheadSize);
     buffer.resize(fileSize);
     ifs.read(buffer.data(), buffer.capacity());
     auto bytesRead = ifs.gcount();
-    assert(bytesRead <= buffer.size());
+    assert(bytesRead <= static_cast<std::streamsize>(buffer.size()));
     if (ifs.bad()) {
         throw std::runtime_error("readJsonFileSequential: Error reading from file " + filename);
     }
@@ -331,7 +330,7 @@ std::string getJsonContent(const T& obj) {
 /// @param out 読み込み先のオブジェクト。
 export template <HasReadJson T>
 void readJsonString(const std::string& jsonText, T& out) {
-    std::vector<char> buffer(jsonText.begin(), jsonText.end());
+    std::string buffer = jsonText;
     buffer.reserve(buffer.size() + aheadSize);
 
     ReadingAheadBuffer inputSource(std::move(buffer), aheadSize);

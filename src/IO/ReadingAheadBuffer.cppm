@@ -2,7 +2,7 @@
 // @brief 先読み機能を持つバッファの実装。
 
 module;
-#include <vector>
+#include <string>
 #include <cassert>
 
 export module rai.json.reading_ahead_buffer;
@@ -12,7 +12,7 @@ export namespace rai::json {
 /// @brief 先読みバッファ。
 class ReadingAheadBuffer {
    public:
-    using bufferType = std::vector<char>;
+    using bufferType = std::string;
 
     /// @brief コンストラクタ。
     /// @param buffer バッファ本体。内容が入っていること。末尾における先読み分、capacityを確保しておくこと。
@@ -52,7 +52,7 @@ class ReadingAheadBuffer {
     }
 
     //! トークン解析用の消費バッファ。末尾MaxOffset byteは先読み用。
-    std::vector<char> consumingBuffer_;
+    std::string consumingBuffer_;
     std::size_t consumingValidSize_; ///< 消費バッファの有効データ長。先読み用除く。
     std::size_t consumingPos_;       ///< 消費バッファ内の現在位置。
     std::size_t aheadSize_;          ///< 先読みbyte数。
