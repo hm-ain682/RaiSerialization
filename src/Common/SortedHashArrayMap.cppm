@@ -85,13 +85,12 @@ struct SortedHashArrayMapAlgorithms {
     using KeyEqual = typename Traits::KeyEqual;
     using Entry = MapEntry<KeyType, ValueType>;
 
-    /// @brief 指定キーに対応するエントリの元インデックスを検索する。
-    /// @param entriesBegin エントリ配列の先頭。
-    /// @param entriesSize エントリ数。
+    /// @brief 指定キーに対応するエントリを検索する。
+    /// @param entries エントリ配列のspan。
     /// @param key 検索キー。
-    /// @return 見つかった場合は元インデックス、未検出時はstd::nullopt。
+    /// @return 見つかった場合はそのイテレータ、未検出時はentries.end()。
     template <typename Lookup>
-    static std::optional<std::size_t> findIndex(
+    static typename std::span<const Entry>::iterator find(
         std::span<const Entry> entries, const Lookup& key) {
         const auto hash = Hash{}(key);
 
@@ -103,39 +102,13 @@ struct SortedHashArrayMapAlgorithms {
                 return entry.hash < hashValue;
             });
 
+        // 同一ハッシュのエントリを線形探索してキー一致を確認
         for (auto it = lower; it != entries.end() && it->hash == hash; ++it) {
             if (KeyEqual{}(it->key, key)) {
-                return it->originalIndex;
+                return it;
             }
         }
-        return std::nullopt;
-    }
-
-    /// @brief 指定キーに対応する値を検索する。
-    /// @param entriesBegin エントリ配列の先頭。
-    /// @param entriesSize エントリ数。
-    /// @param key 検索キー。
-    /// @return 見つかった場合は値へのポインタ、未検出時はnullptr。
-    template <typename Lookup>
-    static const ValueType* findValue(
-        std::span<const Entry> entries,
-        const Lookup& key) {
-        const auto hash = Hash{}(key);
-
-        const auto lower = std::lower_bound(
-            entries.begin(),
-            entries.end(),
-            hash,
-            [](const Entry& entry, std::size_t hashValue) {
-                return entry.hash < hashValue;
-            });
-
-        for (auto it = lower; it != entries.end() && it->hash == hash; ++it) {
-            if (KeyEqual{}(it->key, key)) {
-                return &it->value;
-            }
-        }
-        return nullptr;
+        return entries.end();
     }
 };
 
@@ -169,7 +142,11 @@ public:
     /// @return 見つかった場合は元インデックス、未検出時はstd::nullopt。
     template <typename Lookup>
     std::optional<std::size_t> findIndex(const Lookup& key) const {
-        return Algorithms::findIndex(entries_, key);
+        auto it = Algorithms::find(entries_, key);
+        if (it != entries_.end()) {
+            return it->originalIndex;
+        }
+        return std::nullopt;
     }
 
     /// @brief 指定キーに対応する値を検索する。
@@ -178,7 +155,11 @@ public:
     /// @return 見つかった場合は値へのポインタ、未検出時はnullptr。
     template <typename Lookup>
     const ValueType* findValue(const Lookup& key) const {
-        return Algorithms::findValue(entries_, key);
+        auto it = Algorithms::find(entries_, key);
+        if (it != entries_.end()) {
+            return &it->value;
+        }
+        return nullptr;
     }
 
     /// @brief 反復の開始位置を取得する。
@@ -256,13 +237,23 @@ public:
     /// @return 見つかった場合はフィールドの元インデックス、未検出時はstd::nullopt。
     template <typename Lookup>
     std::optional<std::size_t> findIndex(const Lookup& key) const {
-        return Algorithms::findIndex(std::span<const FieldInfo>(sortedFields_.data(), N), key);
+        std::span<const FieldInfo> entries(sortedFields_.data(), N);
+        auto it = Algorithms::find(entries, key);
+        if (it != entries.end()) {
+            return it->originalIndex;
+        }
+        return std::nullopt;
     }
 
     /// @brief 指定キーに対応する値を取得する。見つからなければ nullptr を返す。
     template <typename Lookup>
     const ValueType* findValue(const Lookup& key) const {
-        return Algorithms::findValue(std::span<const FieldInfo>(sortedFields_.data(), N), key);
+        std::span<const FieldInfo> entries(sortedFields_.data(), N);
+        auto it = Algorithms::find(entries, key);
+        if (it != entries.end()) {
+            return &it->value;
+        }
+        return nullptr;
     }
 
 private:
