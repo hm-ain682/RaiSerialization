@@ -30,8 +30,8 @@ struct A {
     ///       makeJsonFieldSetを使用することで型名を簡潔に記述。
     virtual const IJsonFieldSet& jsonFields() const {
         static const auto fields = makeJsonFieldSet<A>(
-            JsonField(&A::w, "w"),
-            JsonField(&A::x, "x")
+            makeJsonField(&A::w, "w"),
+            makeJsonField(&A::x, "x")
         );
         return fields;
     }
@@ -47,8 +47,8 @@ struct B : public A {
     ///       makeJsonFieldSetを使用することで型名を簡潔に記述。
     const IJsonFieldSet& jsonFields() const override {
         static const auto fields = makeJsonFieldSet<B>(
-            JsonField(&A::w, "w"),
-            JsonField(&B::y, "y")
+            makeJsonField(&A::w, "w"),
+            makeJsonField(&B::y, "y")
         );
         return fields;
     }
@@ -64,8 +64,8 @@ struct C : public A {
     ///       makeJsonFieldSetを使用することで型名を簡潔に記述。
     const IJsonFieldSet& jsonFields() const override {
         static const auto fields = makeJsonFieldSet<C>(
-            JsonField(&A::w, "w"),
-            JsonField(&C::z, "z")
+            makeJsonField(&A::w, "w"),
+            makeJsonField(&C::z, "z")
         );
         return fields;
     }
@@ -94,7 +94,7 @@ struct POne : public PB {
 
     const IJsonFieldSet& jsonFields() const override {
         static const auto f = makeJsonFieldSet<POne>(
-            JsonField(&POne::x, "x")
+            makeJsonField(&POne::x, "x")
         );
         return f;
     }
@@ -110,7 +110,7 @@ struct PTwo : public PB {
 
     const IJsonFieldSet& jsonFields() const override {
         static const auto f = makeJsonFieldSet<PTwo>(
-            JsonField(&PTwo::s, "s")
+            makeJsonField(&PTwo::s, "s")
         );
         return f;
     }
@@ -211,14 +211,14 @@ struct IntegerTypes {
 
     const IJsonFieldSet& jsonFields() const {
         static const auto fields = makeJsonFieldSet<IntegerTypes>(
-            JsonField(&IntegerTypes::s, "s"),
-            JsonField(&IntegerTypes::us, "us"),
-            JsonField(&IntegerTypes::i, "i"),
-            JsonField(&IntegerTypes::ui, "ui"),
-            JsonField(&IntegerTypes::l, "l"),
-            JsonField(&IntegerTypes::ul, "ul"),
-            JsonField(&IntegerTypes::ll, "ll"),
-            JsonField(&IntegerTypes::ull, "ull")
+            makeJsonField(&IntegerTypes::s, "s"),
+            makeJsonField(&IntegerTypes::us, "us"),
+            makeJsonField(&IntegerTypes::i, "i"),
+            makeJsonField(&IntegerTypes::ui, "ui"),
+            makeJsonField(&IntegerTypes::l, "l"),
+            makeJsonField(&IntegerTypes::ul, "ul"),
+            makeJsonField(&IntegerTypes::ll, "ll"),
+            makeJsonField(&IntegerTypes::ull, "ull")
         );
         return fields;
     }
@@ -265,9 +265,9 @@ struct FloatingPointTypes {
 
     const IJsonFieldSet& jsonFields() const {
         static const auto fields = makeJsonFieldSet<FloatingPointTypes>(
-            JsonField(&FloatingPointTypes::f, "f"),
-            JsonField(&FloatingPointTypes::d, "d"),
-            JsonField(&FloatingPointTypes::ld, "ld")
+            makeJsonField(&FloatingPointTypes::f, "f"),
+            makeJsonField(&FloatingPointTypes::d, "d"),
+            makeJsonField(&FloatingPointTypes::ld, "ld")
         );
         return fields;
     }
@@ -306,13 +306,13 @@ struct CharacterTypes {
 
     const IJsonFieldSet& jsonFields() const {
         static const auto fields = makeJsonFieldSet<CharacterTypes>(
-            JsonField(&CharacterTypes::c, "c"),
-            JsonField(&CharacterTypes::sc, "sc"),
-            JsonField(&CharacterTypes::uc, "uc"),
-            JsonField(&CharacterTypes::c8, "c8"),
-            JsonField(&CharacterTypes::c16, "c16"),
-            JsonField(&CharacterTypes::c32, "c32"),
-            JsonField(&CharacterTypes::wc, "wc")
+            makeJsonField(&CharacterTypes::c, "c"),
+            makeJsonField(&CharacterTypes::sc, "sc"),
+            makeJsonField(&CharacterTypes::uc, "uc"),
+            makeJsonField(&CharacterTypes::c8, "c8"),
+            makeJsonField(&CharacterTypes::c16, "c16"),
+            makeJsonField(&CharacterTypes::c32, "c32"),
+            makeJsonField(&CharacterTypes::wc, "wc")
         );
         return fields;
     }
@@ -352,7 +352,7 @@ struct TestHolder {
 
     const IJsonFieldSet& jsonFields() const {
         static const auto fields = makeJsonFieldSet<TestHolder>(
-            JsonField(&TestHolder::c16, "c16")
+            makeJsonField(&TestHolder::c16, "c16")
         );
         return fields;
     }
@@ -389,8 +389,8 @@ struct NestedChild {
 
     const IJsonFieldSet& jsonFields() const {
         static const auto fields = makeJsonFieldSet<NestedChild>(
-            JsonField(&NestedChild::value, "value"),
-            JsonField(&NestedChild::name, "name")
+            makeJsonField(&NestedChild::value, "value"),
+            makeJsonField(&NestedChild::name, "name")
         );
         return fields;
     }
@@ -407,8 +407,8 @@ struct NestedParent {
 
     const IJsonFieldSet& jsonFields() const {
         static const auto fields = makeJsonFieldSet<NestedParent>(
-            JsonField(&NestedParent::child, "child"),
-            JsonField(&NestedParent::flag, "flag")
+            makeJsonField(&NestedParent::child, "child"),
+            makeJsonField(&NestedParent::flag, "flag")
         );
         return fields;
     }
@@ -443,8 +443,8 @@ struct PointerHolder {
 
     const IJsonFieldSet& jsonFields() const {
         static const auto fields = makeJsonFieldSet<PointerHolder>(
-            JsonField(&PointerHolder::ptr, "ptr"),
-            JsonField(&PointerHolder::ptrVec, "ptrVec")
+            makeJsonField(&PointerHolder::ptr, "ptr"),
+            makeJsonField(&PointerHolder::ptrVec, "ptrVec")
         );
         return fields;
     }
@@ -681,6 +681,14 @@ struct Tag {
     std::string label;
     int priority = 0;
 
+    const IJsonFieldSet& jsonFields() const {
+        static const auto fields = makeJsonFieldSet<Tag>(
+            makeJsonField(&Tag::label, "label"),
+            makeJsonField(&Tag::priority, "priority")
+        );
+        return fields;
+    }
+
     /// @brief 他インスタンスとの同値判定。
     /// @param other 比較対象。
     /// @return 同値ならtrue。
@@ -695,41 +703,7 @@ struct SetFieldVectorHolder {
 
     const IJsonFieldSet& jsonFields() const {
         static const auto fields = makeJsonFieldSet<SetFieldVectorHolder>(
-            makeJsonSetField(
-                &SetFieldVectorHolder::tags, "tags",
-                // コンテナに要素を追加するファンクタ
-                [](std::vector<Tag>& container, Tag elem) {
-                    container.push_back(std::move(elem));
-                },
-                // 要素を読み取るファンクタ
-                [](JsonParser& parser) -> Tag {
-                    Tag tag;
-                    parser.startObject();
-                    while (!parser.nextIsEndObject()) {
-                        auto key = parser.nextKey();
-                        if (key == "label") {
-                            parser.readTo(tag.label);
-                        }
-                        else if (key == "priority") {
-                            parser.readTo(tag.priority);
-                        }
-                        else {
-                            parser.skipValue();
-                        }
-                    }
-                    parser.endObject();
-                    return tag;
-                },
-                // 要素を書き出すファンクタ
-                [](JsonWriter& writer, const Tag& elem) {
-                    writer.startObject();
-                    writer.key("label");
-                    writer.writeObject(elem.label);
-                    writer.key("priority");
-                    writer.writeObject(elem.priority);
-                    writer.endObject();
-                }
-            )
+            makeJsonSetField(&SetFieldVectorHolder::tags, "tags")
         );
         return fields;
     }
@@ -764,23 +738,7 @@ struct SetFieldSetHolder {
 
     const IJsonFieldSet& jsonFields() const {
         static const auto fields = makeJsonFieldSet<SetFieldSetHolder>(
-            makeJsonSetField(
-                &SetFieldSetHolder::tags, "tags",
-                // コンテナに要素を追加するファンクタ（std::set用）
-                [](std::set<std::string>& container, std::string elem) {
-                    container.insert(std::move(elem));
-                },
-                // 要素を読み取るファンクタ
-                [](JsonParser& parser) -> std::string {
-                    std::string value;
-                    parser.readTo(value);
-                    return value;
-                },
-                // 要素を書き出すファンクタ
-                [](JsonWriter& writer, const std::string& elem) {
-                    writer.writeObject(elem);
-                }
-            )
+            makeJsonSetField(&SetFieldSetHolder::tags, "tags")
         );
         return fields;
     }
@@ -815,8 +773,8 @@ struct Point {
 
     const IJsonFieldSet& jsonFields() const {
         static const auto fields = makeJsonFieldSet<Point>(
-            JsonField(&Point::x, "x"),
-            JsonField(&Point::y, "y")
+            makeJsonField(&Point::x, "x"),
+            makeJsonField(&Point::y, "y")
         );
         return fields;
     }
@@ -835,41 +793,7 @@ struct SetFieldObjectHolder {
 
     const IJsonFieldSet& jsonFields() const {
         static const auto fields = makeJsonFieldSet<SetFieldObjectHolder>(
-            makeJsonSetField(
-                &SetFieldObjectHolder::points, "points",
-                // コンテナに要素を追加するファンクタ
-                [](std::vector<Point>& container, Point elem) {
-                    container.push_back(std::move(elem));
-                },
-                // 要素を読み取るファンクタ（オブジェクト型の読み込み）
-                [](JsonParser& parser) -> Point {
-                    Point point;
-                    parser.startObject();
-                    while (!parser.nextIsEndObject()) {
-                        auto key = parser.nextKey();
-                        if (key == "x") {
-                            parser.readTo(point.x);
-                        }
-                        else if (key == "y") {
-                            parser.readTo(point.y);
-                        }
-                        else {
-                            parser.skipValue();
-                        }
-                    }
-                    parser.endObject();
-                    return point;
-                },
-                // 要素を書き出すファンクタ（オブジェクト型の書き込み）
-                [](JsonWriter& writer, const Point& elem) {
-                    writer.startObject();
-                    writer.key("x");
-                    writer.writeObject(elem.x);
-                    writer.key("y");
-                    writer.writeObject(elem.y);
-                    writer.endObject();
-                }
-            )
+            makeJsonSetField(&SetFieldObjectHolder::points, "points")
         );
         return fields;
     }

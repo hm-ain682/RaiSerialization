@@ -49,8 +49,8 @@ struct Point {
     int y{};
     const rai::json::IJsonFieldSet& jsonFields() const {
         static const auto fields = rai::json::makeJsonFieldSet<Point>(
-            rai::json::JsonField(&Point::x, "x"),
-            rai::json::JsonField(&Point::y, "y")
+            rai::json::makeJsonField(&Point::x, "x"),
+            rai::json::makeJsonField(&Point::y, "y")
         );
         return fields;
     }
@@ -128,7 +128,7 @@ struct Circle : public Shape {
 
     const rai::json::IJsonFieldSet& jsonFields() const override {
         static const auto fields = rai::json::makeJsonFieldSet<Circle>(
-            rai::json::JsonField(&Circle::radius, "radius")
+            rai::json::makeJsonField(&Circle::radius, "radius")
         );
         return fields;
     }
@@ -141,8 +141,8 @@ struct Rectangle : public Shape {
 
     const rai::json::IJsonFieldSet& jsonFields() const override {
         static const auto fields = rai::json::makeJsonFieldSet<Rectangle>(
-            rai::json::JsonField(&Rectangle::width, "width"),
-            rai::json::JsonField(&Rectangle::height, "height")
+            rai::json::makeJsonField(&Rectangle::width, "width"),
+            rai::json::makeJsonField(&Rectangle::height, "height")
         );
         return fields;
     }

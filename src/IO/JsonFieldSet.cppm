@@ -116,107 +116,16 @@ public:
             if constexpr (HasToJson<FieldType, std::remove_cvref_t<decltype(value)>>) {
                 field.toJson(writer, value);
             } else {
-                // ここでエラーになる場合は、fieldの対象メンバー変数の型が、json入出力対象対象型ではない。
-                writeObject(writer, value);
+                // JsonFieldのデフォルトtoJsonに委譲
+                field.toJson(writer, value);
             }
         });
     }
 private:
-    template<IsFundamentalValue T>
-    void writeObject(JsonWriter& writer, T value) const {
-        writer.writeObject(value);
-    }
-
-    void writeObject(JsonWriter& writer, const std::string& value) const {
-        writer.writeObject(value);
-    }
-
-    // vectorなどの範囲型
-    template <std::ranges::range Range>
-    void writeObject(JsonWriter& writer, const Range& range) const {
-        writer.startArray();
-        for (const auto& item : range) {
-            if constexpr (HasJsonFields<std::ranges::range_value_t<Range>>) {
-                auto& fields = item.jsonFields();
-                writer.startObject();
-                fields.writeFieldsOnly(writer, &item);
-                writer.endObject();
-            } else {
-                writeObject(writer, item);
-            }
-        }
-        writer.endArray();
-    }
-
-    // unique_ptr型（基本型などの場合）
-    template <typename T>
-    requires (!HasJsonFields<T>)
-    void writeObject(JsonWriter& writer, const std::unique_ptr<T>& ptr) const {
-        if (ptr) {
-            writeObject(writer, *ptr);
-        } else {
-            writer.null();
-        }
-    }
-
-    // unique_ptr型（HasJsonFieldsを満たす場合）
-    template <HasJsonFields T>
-    void writeObject(JsonWriter& writer, const std::unique_ptr<T>& ptr) const {
-        if (ptr) {
-            auto& fields = ptr->jsonFields();
-            writer.startObject();
-            fields.writeFieldsOnly(writer, ptr.get());
-            writer.endObject();
-        } else {
-            writer.null();
-        }
-    }
-
-    // ポリモーフィック型の書き出しは各 JsonPolymorphicField/JsonPolymorphicArrayField の
-    // toJson(JsonWriter&, value) に移譲されています。
-
-    // variant型の処理
-    template <typename... Types>
-    void writeObject(JsonWriter& writer, const std::variant<Types...>& var) const {
-        std::visit([&](const auto& value) {
-            using ValueType = std::decay_t<decltype(value)>;
-            if constexpr (HasJsonFields<ValueType>) {
-                auto& fields = value.jsonFields();
-                writer.startObject();
-                fields.writeFieldsOnly(writer, &value);
-                writer.endObject();
-            } else {
-                writeObject(writer, value);
-            }
-        }, var);
-    }
-
-    // jsonFields()を実装している型
-    template <HasJsonFields T>
-    void writeObject(JsonWriter& writer, const T& obj) const {
-        auto& fields = obj.jsonFields();
-        writer.startObject();
-        fields.writeFieldsOnly(writer, static_cast<const void*>(&obj));
-        writer.endObject();
-    }
-
-    // カスタムJSON出力を持つ型（writeJsonメソッドを持つ型）
-    template <HasWriteJson T>
-    void writeObject(JsonWriter& writer, const T& obj) const {
-        obj.writeJson(writer);
-    }
+    // JsonFieldの書き出しヘルパーに委譲するため、個別のwriteObject群は削除
 
     // ******************************************************************************** 読み込み
 private:
-    // jsonFields を持つ型への読み込み
-    template <HasJsonFields T>
-    void readObject(JsonParser& parser, T& out) const {
-        auto& fields = out.jsonFields();
-        parser.startObject();
-        readObjectFieldsByFieldSet(parser, fields, &out);
-        parser.endObject();
-    }
-
     /// @brief オブジェクトのフィールドをJSONから読み込む（startObject/endObject済み）。
     /// @param parser 読み取り元のJsonParser互換オブジェクト。
     /// @param obj 対象オブジェクト。
@@ -247,8 +156,8 @@ private:
                 if constexpr (HasFromJson<FieldType, ValueType>) {
                     obj.*(field.member) = field.fromJson(parser);
                 } else {
-                    // ここでエラーになる場合は、fieldの対象メンバー変数の型が、json入出力対象対象型ではない。
-                    readObject(parser, obj.*(field.member));
+                    // JsonFieldのデフォルトfromJsonに委譲
+                    obj.*(field.member) = field.fromJson(parser);
                 }
             });
         }
@@ -262,80 +171,7 @@ private:
         });
     }
 
-    template <IsFundamentalValue T>
-    void readObject(JsonParser& parser, T& out) const {
-        T temp = out;
-        parser.readTo(temp);
-        out = temp;
-    }
-
-    void readObject(JsonParser& parser, std::string& out) const {
-        parser.readTo(out);
-    }
-
-    /// @brief JsonFieldSetBaseを使用してオブジェクトのフィールドを読み込む（startObject/endObject済み）。
-    /// @tparam T オブジェクトの型。
-    /// @param parser 読み取り元のJsonParser互換オブジェクト。
-    /// @param fields オブジェクトのフィールドセット。
-    /// @param obj 読み込み先のオブジェクト。
-    /// @note この関数は、オブジェクトが既にstartObjectされている状態を想定している。
-    template <typename T>
-    void readObjectFieldsByFieldSet(JsonParser& parser, const JsonFieldSetBase& fields, T* obj) const {
-        while (!parser.nextIsEndObject()) {
-            std::string k = parser.nextKey();
-            if (!fields.readFieldByKey(parser, obj, k)) {
-                parser.noteUnknownKey(k);
-                parser.skipValue();
-            }
-        }
-    }
-
-    // unique_ptr<T>（null を許可）
-    template <typename T>
-    void readObject(JsonParser& parser, std::unique_ptr<T>& out) const {
-        if (parser.nextIsNull()) {
-            parser.skipValue();
-            out.reset();
-            return;
-        }
-        auto tmp = std::make_unique<T>();
-        if constexpr (HasJsonFields<T>) {
-            auto& fields = tmp->jsonFields();
-            parser.startObject();
-            readObjectFieldsByFieldSet(parser, fields, tmp.get());
-            parser.endObject();
-        } else {
-            readObject(parser, *tmp);
-        }
-        out = std::move(tmp);
-    }
-
-    // カスタムJSON入力を持つ型（readJsonメソッドを持つ型）
-    template <typename T>
-        requires HasReadJson<T>
-    void readObject(JsonParser& parser, T& out) const {
-        out.readJson(parser);
-    }
-
-    // 配列
-    template <typename T>
-    void readObject(JsonParser& parser, std::vector<T>& out) const {
-        parser.startArray();
-        out.clear();
-        while (!parser.nextIsEndArray()) {
-            T elem{};
-            if constexpr (HasJsonFields<T>) {
-                auto& fields = elem.jsonFields();
-                parser.startObject();
-                readObjectFieldsByFieldSet(parser, fields, &elem);
-                parser.endObject();
-            } else {
-                readObject(parser, elem);
-            }
-            out.push_back(std::move(elem));
-        }
-        parser.endArray();
-    }
+    // JsonFieldの読み取りヘルパーに委譲するため、個別のreadObject群は削除
 
     // ************************************************************************** JSONフィールド操作
 public:
@@ -361,7 +197,7 @@ public:
             if constexpr (HasFromJson<FieldType, ValueType>) {
                 owner->*(field.member) = field.fromJson(parser);
             } else {
-                readObject(parser, owner->*(field.member));
+                owner->*(field.member) = field.fromJson(parser);
             }
         });
 
