@@ -22,6 +22,7 @@ target_sources(RaiJson
             src/IO/ParallelInputStreamSource.cppm
             src/IO/JsonWriter.cppm
             src/IO/JsonParser.cppm
+            src/IO/JsonValueIO.cppm
             src/IO/JsonTokenManager.cppm
             src/IO/JsonTokenizer.cppm
             src/IO/JsonConcepts.cppm

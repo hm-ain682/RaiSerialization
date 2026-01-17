@@ -29,6 +29,7 @@ import rai.json.json_writer;
 import rai.json.json_parser;
 import rai.json.json_token_manager;
 import rai.json.json_field;
+import rai.json.json_value_io;
 import rai.collection.sorted_hash_array_map;
 
 namespace rai::json {
@@ -329,7 +330,7 @@ struct JsonSetField : JsonField<MemberPtrType> {
                 parser.readTo(s);
                 addElement(out, std::move(s));
             } else {
-                auto elem = JsonFieldBase<MemberPtrType>::template readValue<ElementType>(parser);
+                auto elem = ::rai::json::value_io::template readValue<ElementType>(parser);
                 addElement(out, std::move(elem));
             }
         }
@@ -343,7 +344,7 @@ struct JsonSetField : JsonField<MemberPtrType> {
     void toJson(JsonWriter& writer, const ValueType& container) const {
         writer.startArray();
         for (const auto& elem : container) {
-            JsonFieldBase<MemberPtrType>::writeValue(writer, elem);
+            ::rai::json::value_io::template writeValue<ElementType>(writer, elem);
         }
         writer.endArray();
     }
