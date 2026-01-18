@@ -22,61 +22,47 @@ import rai.json.json_writer;
 import rai.json.json_parser;
 import rai.json.json_token_manager;
 
-export namespace rai::json::value_io {
+namespace rai::json::value_io {
 
-// 値の書き出し（基本型）
-template <typename T>
+// -----------------------------------------------------------------------------
+// Paired write/read implementations (grouped by type)
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// Fundamental types
+export template <typename T>
     requires IsFundamentalValue<T>
 void writeValue(JsonWriter& writer, const T& value) {
     writer.writeObject(value);
 }
 
-// 文字列
-template <typename T>
+export template <typename T>
+    requires IsFundamentalValue<std::remove_cvref_t<T>>
+std::remove_cvref_t<T> readValue(JsonParser& parser) {
+    std::remove_cvref_t<T> out{};
+    parser.readTo(out);
+    return out;
+}
+
+// -----------------------------------------------------------------------------
+// std::string
+export template <typename T>
     requires std::is_same_v<std::remove_cvref_t<T>, std::string>
 void writeValue(JsonWriter& writer, const T& value) {
     writer.writeObject(value);
 }
 
-// unique_ptr
-template <typename T>
-    requires UniquePointer<T>
-void writeValue(JsonWriter& writer, const T& ptr) {
-    if (!ptr) {
-        writer.null();
-        return;
-    }
-    using Element = typename PointerElementType<std::remove_cvref_t<T>>::type;
-    if constexpr (HasJsonFields<Element>) {
-        auto& fields = ptr->jsonFields();
-        writer.startObject();
-        fields.writeFieldsOnly(writer, ptr.get());
-        writer.endObject();
-    } else {
-        value_io::writeValue(writer, *ptr);
-    }
+export template <typename T>
+    requires std::is_same_v<std::remove_cvref_t<T>, std::string>
+std::string readValue(JsonParser& parser) {
+    std::string out;
+    parser.readTo(out);
+    return out;
 }
 
-// variant
-template <typename T>
-    requires IsStdVariant<std::remove_cvref_t<T>>::value
-void writeValue(JsonWriter& writer, const T& v) {
-    std::visit([&writer](const auto& inner) { value_io::writeValue(writer, inner); }, v);
-}
-
-// ranges (exclude stringlike)
-template <typename T>
-    requires (std::ranges::range<T> && !StringLike<T>)
-void writeValue(JsonWriter& writer, const T& range) {
-    writer.startArray();
-    for (const auto& elem : range) {
-        value_io::writeValue(writer, elem);
-    }
-    writer.endArray();
-}
-
+// -----------------------------------------------------------------------------
 // HasJsonFields
-template <typename T>
+export template <typename T>
     requires HasJsonFields<T>
 void writeValue(JsonWriter& writer, const T& obj) {
     auto& fields = obj.jsonFields();
@@ -85,44 +71,6 @@ void writeValue(JsonWriter& writer, const T& obj) {
     writer.endObject();
 }
 
-// HasWriteJson
-template <typename T>
-    requires HasWriteJson<T>
-void writeValue(JsonWriter& writer, const T& obj) {
-    obj.writeJson(writer);
-}
-
-// -----------------------------------------------------------------------------
-// 読み取り側
-// -----------------------------------------------------------------------------
-
-// Forward declarations for helpers used by readValue implementations
-
-template <typename T>
-    requires IsFundamentalValue<std::remove_cvref_t<T>>
-std::remove_cvref_t<T> readValue(JsonParser& parser) {
-    std::remove_cvref_t<T> out{};
-    parser.readTo(out);
-    return out;
-}
-
-template <typename T>
-    requires HasReadJson<std::remove_cvref_t<T>>
-std::remove_cvref_t<T> readValue(JsonParser& parser) {
-    std::remove_cvref_t<T> out{};
-    out.readJson(parser);
-    return out;
-}
-
-template <typename T>
-    requires std::is_same_v<std::remove_cvref_t<T>, std::string>
-std::string readValue(JsonParser& parser) {
-    std::string out;
-    parser.readTo(out);
-    return out;
-}
-
-// helpers
 template <typename T>
 T readObjectWithFields(JsonParser& parser) {
     T obj{};
@@ -139,13 +87,49 @@ T readObjectWithFields(JsonParser& parser) {
     return obj;
 }
 
-template <typename T>
+export template <typename T>
     requires HasJsonFields<std::remove_cvref_t<T>>
 std::remove_cvref_t<T> readValue(JsonParser& parser) {
     return readObjectWithFields<std::remove_cvref_t<T>>(parser);
 }
 
-template <typename T>
+// -----------------------------------------------------------------------------
+// HasWriteJson / HasReadJson
+export template <typename T>
+    requires HasWriteJson<T>
+void writeValue(JsonWriter& writer, const T& obj) {
+    obj.writeJson(writer);
+}
+
+export template <typename T>
+    requires HasReadJson<std::remove_cvref_t<T>>
+std::remove_cvref_t<T> readValue(JsonParser& parser) {
+    std::remove_cvref_t<T> out{};
+    out.readJson(parser);
+    return out;
+}
+
+// -----------------------------------------------------------------------------
+// Unique pointers
+export template <typename T>
+    requires UniquePointer<T>
+void writeValue(JsonWriter& writer, const T& ptr) {
+    if (!ptr) {
+        writer.null();
+        return;
+    }
+    using Element = typename PointerElementType<std::remove_cvref_t<T>>::type;
+    if constexpr (HasJsonFields<Element>) {
+        auto& fields = ptr->jsonFields();
+        writer.startObject();
+        fields.writeFieldsOnly(writer, ptr.get());
+        writer.endObject();
+    } else {
+        writeValue(writer, *ptr);
+    }
+}
+
+export template <typename T>
     requires UniquePointer<std::remove_cvref_t<T>>
 std::remove_cvref_t<T> readValue(JsonParser& parser) {
     using Element = typename PointerElementType<std::remove_cvref_t<T>>::type;
@@ -158,63 +142,34 @@ std::remove_cvref_t<T> readValue(JsonParser& parser) {
         parser.readTo(tmp);
         return std::make_unique<Element>(std::move(tmp));
     } else {
-        auto elem = value_io::readValue<Element>(parser);
+        auto elem = readValue<Element>(parser);
         return std::make_unique<Element>(std::move(elem));
     }
 }
 
-template <typename T>
-    requires (std::ranges::range<std::remove_cvref_t<T>> && !StringLike<std::remove_cvref_t<T>>)
-std::remove_cvref_t<T> readValue(JsonParser& parser) {
-    using Decayed = std::remove_cvref_t<T>;
-    using Element = std::ranges::range_value_t<Decayed>;
-    Decayed out{};
-    parser.startArray();
-    while (!parser.nextIsEndArray()) {
-        if constexpr (std::is_same_v<Element, std::string>) {
-            std::string tmp;
-            parser.readTo(tmp);
-            if constexpr (requires(Decayed& c, Element&& v) { c.push_back(std::move(v)); }) {
-                out.push_back(std::move(tmp));
-            } else if constexpr (requires(Decayed& c, Element&& v) { c.insert(std::move(v)); }) {
-                out.insert(std::move(tmp));
-            } else {
-                static_assert(AlwaysFalse<Decayed>, "Container must support push_back or insert");
-            }
-        } else {
-            if constexpr (requires(Decayed& c, Element&& v) { c.push_back(std::move(v)); }) {
-                out.push_back(value_io::readValue<Element>(parser));
-            } else if constexpr (requires(Decayed& c, Element&& v) { c.insert(std::move(v)); }) {
-                out.insert(value_io::readValue<Element>(parser));
-            } else {
-                static_assert(AlwaysFalse<Decayed>, "Container must support push_back or insert");
-            }
-        }
-    }
-    parser.endArray();
-    return out;
-}
+// -----------------------------------------------------------------------------
+// Variant
 
-template <typename VariantType, std::size_t Index = 0>
-VariantType readVariantImpl(JsonParser& parser, JsonTokenType tokenType) {
-    constexpr std::size_t AlternativeCount = std::variant_size_v<VariantType>;
-    if constexpr (Index >= AlternativeCount) {
-        throw std::runtime_error("Failed to dispatch variant for current token");
-    }
-    else {
-        using Alternative = std::variant_alternative_t<Index, VariantType>;
+export template <typename T>
+auto readValue(JsonParser& parser) -> std::remove_cvref_t<T>;
+template <typename VariantType, std::size_t... Is>
+VariantType readVariantByIndex(JsonParser& parser, JsonTokenType tokenType, std::index_sequence<Is...>) {
+    VariantType out;
+    bool matched = false;
+    auto helper = [&](auto idx) {
+        if (matched) {
+            return;
+        }
+        constexpr std::size_t I = decltype(idx)::value;
+        using Alternative = std::variant_alternative_t<I, VariantType>;
         if (isVariantAlternativeMatch<Alternative>(tokenType)) {
-            return VariantType(std::in_place_index<Index>, value_io::readValue<Alternative>(parser));
+            out = VariantType(std::in_place_index<I>, readValue<Alternative>(parser));
+            matched = true;
         }
-        return readVariantImpl<VariantType, Index + 1>(parser, tokenType);
-    }
-}
-
-template <typename T>
-    requires IsStdVariant<std::remove_cvref_t<T>>::value
-std::remove_cvref_t<T> readValue(JsonParser& parser) {
-    auto tokenType = parser.nextTokenType();
-    return readVariantImpl<std::remove_cvref_t<T>>(parser, tokenType);
+    };
+    (helper(std::integral_constant<std::size_t, Is>{}), ...);
+    if (!matched) throw std::runtime_error("Failed to dispatch variant for current token");
+    return out;
 }
 
 template <typename T>
@@ -240,6 +195,62 @@ bool isVariantAlternativeMatch(JsonTokenType tokenType) {
     }
 }
 
-// variant dispatch helpers are intentionally not duplicated here; reuse those in JsonField module.
+export template <typename T>
+    requires IsStdVariant<std::remove_cvref_t<T>>::value
+void writeValue(JsonWriter& writer, const T& v) {
+    std::visit([&writer](const auto& inner) { writeValue(writer, inner); }, v);
+}
+
+export template <typename T>
+    requires IsStdVariant<std::remove_cvref_t<T>>::value
+std::remove_cvref_t<T> readValue(JsonParser& parser) {
+    using VariantType = std::remove_cvref_t<T>;
+    auto tokenType = parser.nextTokenType();
+    return readVariantByIndex<VariantType>(parser, tokenType, std::make_index_sequence<std::variant_size_v<VariantType>>{});
+}
+
+// -----------------------------------------------------------------------------
+// Ranges (exclude stringlike)
+export template <typename T>
+    requires (std::ranges::range<T> && !StringLike<T>)
+void writeValue(JsonWriter& writer, const T& range) {
+    writer.startArray();
+    for (const auto& elem : range) {
+        writeValue(writer, elem);
+    }
+    writer.endArray();
+}
+
+// readValue for containers that support push_back
+export template <typename T>
+    requires (std::ranges::range<std::remove_cvref_t<T>> && !StringLike<std::remove_cvref_t<T>> &&
+              requires(std::remove_cvref_t<T>& c, std::ranges::range_value_t<std::remove_cvref_t<T>>&& v) { c.push_back(std::move(v)); })
+std::remove_cvref_t<T> readValue(JsonParser& parser) {
+    using Decayed = std::remove_cvref_t<T>;
+    using Element = std::ranges::range_value_t<Decayed>;
+    Decayed out{};
+    parser.startArray();
+    while (!parser.nextIsEndArray()) {
+        out.push_back(readValue<Element>(parser));
+    }
+    parser.endArray();
+    return out;
+} 
+
+// readValue for containers that support insert
+export template <typename T>
+    requires (std::ranges::range<std::remove_cvref_t<T>> && !StringLike<std::remove_cvref_t<T>> &&
+              requires(std::remove_cvref_t<T>& c, std::ranges::range_value_t<std::remove_cvref_t<T>>&& v) { c.insert(std::move(v)); })
+std::remove_cvref_t<T> readValue(JsonParser& parser) {
+    using Decayed = std::remove_cvref_t<T>;
+    using Element = std::ranges::range_value_t<Decayed>;
+    Decayed out{};
+    parser.startArray();
+    while (!parser.nextIsEndArray()) {
+        out.insert(readValue<Element>(parser));
+    }
+    parser.endArray();
+    return out;
+}
 
 } // namespace rai::json::value_io
