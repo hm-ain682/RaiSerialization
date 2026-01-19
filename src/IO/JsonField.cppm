@@ -86,11 +86,6 @@ JsonField(MemberPtrType, const char*) -> JsonField<MemberPtrType>;
 // JsonField partial specializations
 // ------------------------------
 
-/// @brief string 系を除くレンジ（配列/コンテナ）を表す concept。
-/// @details std::ranges::range を満たし、かつ `StringLike` を除外することで
-///          `std::string` を配列として誤判定しないようにします。
-export template<typename T>
-concept RangeContainer = std::ranges::range<T> && !StringLike<T>;
 
 /// @brief `value_io` が直接扱える型群を表す concept。
 /// @note 新しい型サポートを追加する際は、`value_io` 側の実装と

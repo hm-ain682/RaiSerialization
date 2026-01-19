@@ -1,6 +1,7 @@
 module;
 #include <type_traits>
 #include <concepts>
+#include <ranges>
 #include <memory>
 #include <vector>
 #include <variant>
@@ -106,6 +107,12 @@ concept UniquePointer = std::is_same_v<std::remove_cvref_t<T>,
 template <typename T>
 concept StringLike = std::is_same_v<std::remove_cvref_t<T>, std::string> ||
     std::is_same_v<std::remove_cvref_t<T>, std::string_view>;
+
+/// @brief string 系を除くレンジ（配列/コンテナ）を表す concept。
+/// @details std::ranges::range を満たし、かつ `StringLike` を除外することで
+///          `std::string` を配列として誤判定しないようにします。
+template<typename T>
+concept RangeContainer = std::ranges::range<T> && !StringLike<T>;
 
 /// @brief 常にfalseを返す補助変数テンプレート。
 template <typename>

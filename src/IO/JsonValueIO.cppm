@@ -206,7 +206,8 @@ T readValue(JsonParser& parser) {
 /// @param tokenType 現在の JSON トークン
 /// @return 読み取られた VariantType を返します
 template <typename VariantType, std::size_t... Is>
-VariantType readVariantByIndex(JsonParser& parser, JsonTokenType tokenType, std::index_sequence<Is...>) {
+VariantType readVariantByIndex(JsonParser& parser, JsonTokenType tokenType,
+    std::index_sequence<Is...>) {
     VariantType out;
     bool matched = false;
     auto helper = [&](auto idx) {
@@ -221,7 +222,9 @@ VariantType readVariantByIndex(JsonParser& parser, JsonTokenType tokenType, std:
         }
     };
     (helper(std::integral_constant<std::size_t, Is>{}), ...);
-    if (!matched) throw std::runtime_error("Failed to dispatch variant for current token");
+    if (!matched) {
+        throw std::runtime_error("Failed to dispatch variant for current token");
+    }
     return out;
 }
 
@@ -259,7 +262,9 @@ bool isVariantAlternativeMatch(JsonTokenType tokenType) {
 export template <typename T>
     requires IsStdVariant<T>::value
 void writeValue(JsonWriter& writer, const T& v) {
-    std::visit([&writer](const auto& inner) { writeValue(writer, inner); }, v);
+    std::visit([&writer](const auto& inner) {
+        writeValue(writer, inner);
+    }, v);
 }
 
 /// @brief std::variant を JSON から読み取ります（トークンに基づいて代替型を選択）。
@@ -271,7 +276,8 @@ export template <typename T>
 T readValue(JsonParser& parser) {
     using VariantType = T;
     auto tokenType = parser.nextTokenType();
-    return readVariantByIndex<VariantType>(parser, tokenType, std::make_index_sequence<std::variant_size_v<VariantType>>{});
+    return readVariantByIndex<VariantType>(parser, tokenType,
+        std::make_index_sequence<std::variant_size_v<VariantType>>{});
 }
 
 // -----------------------------------------------------------------------------
@@ -282,7 +288,7 @@ T readValue(JsonParser& parser) {
 /// @param writer 出力先の JsonWriter
 /// @param range 書き出す範囲
 export template <typename T>
-    requires (std::ranges::range<T> && !StringLike<T>)
+    requires RangeContainer<T>
 void writeValue(JsonWriter& writer, const T& range) {
     writer.startArray();
     for (const auto& elem : range) {
@@ -296,12 +302,11 @@ void writeValue(JsonWriter& writer, const T& range) {
 /// @param parser 入力元の JsonParser
 /// @return 読み取ったコンテナを返します
 export template <typename T>
-    requires (std::ranges::range<T> && !StringLike<T> &&
+    requires (RangeContainer<T> &&
               requires(T& c, std::ranges::range_value_t<T>&& v) { c.push_back(std::move(v)); })
 T readValue(JsonParser& parser) {
-    using Decayed = T;
-    using Element = std::ranges::range_value_t<Decayed>;
-    Decayed out{};
+    using Element = std::ranges::range_value_t<T>;
+    T out{};
     parser.startArray();
     while (!parser.nextIsEndArray()) {
         out.push_back(readValue<Element>(parser));
@@ -315,12 +320,11 @@ T readValue(JsonParser& parser) {
 /// @param parser 入力元の JsonParser
 /// @return 読み取ったコンテナを返します
 export template <typename T>
-    requires (std::ranges::range<T> && !StringLike<T> &&
+    requires (RangeContainer<T> &&
               requires(T& c, std::ranges::range_value_t<T>&& v) { c.insert(std::move(v)); })
 T readValue(JsonParser& parser) {
-    using Decayed = T;
-    using Element = std::ranges::range_value_t<Decayed>;
-    Decayed out{};
+    using Element = std::ranges::range_value_t<T>;
+    T out{};
     parser.startArray();
     while (!parser.nextIsEndArray()) {
         out.insert(readValue<Element>(parser));
