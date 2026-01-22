@@ -86,8 +86,9 @@ struct ColorHolder {
     Color color = Color::Red;
 
     const rai::json::IJsonFieldSet& jsonFields() const {
+        static const auto colorMap = rai::json::makeJsonEnumMap(colorEntries);
         static const auto fields = rai::json::makeJsonFieldSet<ColorHolder>(
-            rai::json::JsonEnumField(&ColorHolder::color, "color", colorEntries)
+            rai::json::makeJsonEnumField(&ColorHolder::color, "color", colorMap)
         );
         return fields;
     }

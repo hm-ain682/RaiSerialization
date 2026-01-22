@@ -23,8 +23,9 @@ struct CH {
     Color color = Color::Red;
 
     const IJsonFieldSet& jsonFields() const {
+        static const auto colorMap = rai::json::makeJsonEnumMap(colorEntries);
         static const auto fields = makeJsonFieldSet<CH>(
-            rai::json::JsonEnumField<decltype(&CH::color), 3>{&CH::color, "color", colorEntries}
+            rai::json::makeJsonEnumField(&CH::color, "color", colorMap)
         );
         return fields;
     }

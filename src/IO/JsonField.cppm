@@ -124,7 +124,23 @@ struct JsonField<Value Owner::*> : JsonFieldBase<Value Owner::*> {
     }
 };
 
+/// @brief JsonField を生成するヘルパー関数（CTAD 回避用）
+export template <typename MemberPtrType>
+constexpr auto makeJsonField(MemberPtrType memberPtr, const char* keyName, bool req = false) {
+    return JsonField<MemberPtrType>(memberPtr, keyName, req);
+}
+
 // ******************************************************************************** enum用
+
+// JsonEnumMapのように、enum <-> 文字列名の双方向マップを提供する型のconcept。
+export template <typename Map>
+concept IsJsonEnumMap
+    = requires { typename Map::Enum; }
+    && std::is_enum_v<typename Map::Enum>
+    && requires(const Map& m, std::string_view s, typename Map::Enum v) {
+        { m.fromName(s) } -> std::same_as<std::optional<typename Map::Enum>>;
+        { m.toName(v) } -> std::same_as<std::optional<std::string_view>>;
+    };
 
 export template <typename EnumType>
 struct EnumEntry {
@@ -132,82 +148,94 @@ struct EnumEntry {
     const char* name; ///< 対応する文字列名。
 };
 
-/// @brief Enum型のフィールド用に特化したJsonField派生クラス。
-/// @tparam MemberPtr Enumメンバー変数へのポインタ。
-/// @tparam Entries Enumと文字列のマッピング配列への参照。
-export template <typename MemberPtrType, std::size_t N = 0>
+/// @brief EnumEntry を利用して enum <-> name の双方向マップを持つ再利用可能な型。
+/// @tparam EnumType enum 型
+/// @tparam N エントリ数（静的）
+export template <typename EnumType, std::size_t N>
+struct JsonEnumMap {
+    using Enum = EnumType;
+
+    /// @brief コンストラクタ（配列から構築）
+    /// @param entries EnumEntry の配列
+    constexpr explicit JsonEnumMap(const EnumEntry<Enum> (&entries)[N]) {
+        std::pair<std::string_view, Enum> nv[N];
+        for (std::size_t i = 0; i < N; ++i) {
+            nv[i] = { entries[i].name, entries[i].value };
+        }
+        nameToValue_ = collection::SortedHashArrayMap<std::string_view, Enum, N>(nv);
+
+        std::pair<Enum, std::string_view> vn[N];
+        for (std::size_t i = 0; i < N; ++i) {
+            vn[i] = { entries[i].value, entries[i].name };
+        }
+        valueToName_ = collection::SortedHashArrayMap<Enum, std::string_view, N>(vn);
+    }
+
+    /// @brief 文字列から enum を得る。見つからない場合は nullopt。
+    constexpr std::optional<Enum> fromName(std::string_view name) const {
+        if (auto p = nameToValue_.findValue(name)) return *p;
+        return std::nullopt;
+    }
+
+    /// @brief enum から文字列名を得る。見つからない場合は nullopt。
+    constexpr std::optional<std::string_view> toName(Enum v) const {
+        if (auto p = valueToName_.findValue(v)) return *p;
+        return std::nullopt;
+    }
+
+private:
+    collection::SortedHashArrayMap<std::string_view, Enum, N> nameToValue_{}; ///< 名前からenum値へのマップ。
+    collection::SortedHashArrayMap<Enum, std::string_view, N> valueToName_{}; ///< enum値から名前へのマップ。
+};
+
+/// @brief JsonEnumMap を使い、実体を外部で共有する JsonEnumField（仮想は使わない）。
+/// @tparam MemberPtrType メンバポインタ型
+/// @tparam MapType JsonEnumMap の型
+export template <typename MemberPtrType, IsJsonEnumMap MapType>
 struct JsonEnumField : JsonFieldBase<MemberPtrType> {
     using Traits = MemberPointerTraits<MemberPtrType>;
     using ValueType = typename Traits::ValueType;
     static_assert(std::is_enum_v<ValueType>, "JsonEnumField requires enum type");
+    static_assert(std::is_same_v<typename MapType::Enum, ValueType>, "MapType must map the same enum type");
 
-    /// @brief Enum用フィールドのコンストラクタ（エントリ配列を受け取る）
-    /// @param memberPtr ポインタメンバ
-    /// @param keyName JSONキー名
-    /// @param entries エントリ配列
+    /// @brief コンストラクタ（既存の JsonEnumMap を参照で受け取る）
     constexpr explicit JsonEnumField(MemberPtrType memberPtr, const char* keyName,
-        const EnumEntry<ValueType> (&entries)[N], bool req = false)
-        : JsonFieldBase<MemberPtrType>(memberPtr, keyName, req) {
+        const MapType& map, bool req = false)
+        : JsonFieldBase<MemberPtrType>(memberPtr, keyName, req), map_(&map) {}
 
-        // build name -> value descriptor array
-        std::pair<std::string_view, ValueType> nv[N];
-        for (std::size_t i = 0; i < N; ++i) {
-            nv[i] = { entries[i].name, entries[i].value };
-        }
-        nameToValue_ = collection::SortedHashArrayMap<std::string_view, ValueType, N>(nv);
-
-        // build value -> name descriptor array
-        std::pair<ValueType, std::string_view> vn[N];
-        for (std::size_t i = 0; i < N; ++i) {
-            vn[i] = { entries[i].value, entries[i].name };
-        }
-        valueToName_ = collection::SortedHashArrayMap<ValueType, std::string_view, N>(vn);
-    }
-
-    /// @brief Enum値をJSONに書き出す。
-    /// @param writer JsonWriterの参照。
-    /// @param value 変換対象のenum値。
-    /// @throws std::runtime_error マッピングが存在しない場合。
     void toJson(JsonWriter& writer, const ValueType& value) const {
-        // エントリが空の場合は常に失敗
-        if constexpr (N == 0) {
-            throw std::runtime_error("Failed to convert enum to string");
-        }
-        const auto* found = valueToName_.findValue(value);
-        if (found) {
-            writer.writeObject(*found);
+        if (auto name = map_->toName(value)) {
+            writer.writeObject(*name);
             return;
         }
-        // マッピングに存在しない値の場合
         throw std::runtime_error("Failed to convert enum to string");
     }
 
-    /// @brief JSONからEnum値を読み取る。
-    /// @param parser JsonParserの参照。
-    /// @return 変換されたenum値。
-    /// @throws std::runtime_error マッピングに存在しない文字列の場合。
-    /// @note 内部で文字列を読み取り、enumエントリで検索する。
     ValueType fromJson(JsonParser& parser) const {
         std::string jsonValue;
         parser.readTo(jsonValue);
-
-        // エントリが空の場合は常に失敗
-        if constexpr (N == 0) {
-            throw std::runtime_error(std::string("Failed to convert string to enum: ") + jsonValue);
+        if (auto v = map_->fromName(jsonValue)) {
+            return *v;
         }
-        const auto* found = nameToValue_.findValue(jsonValue);
-        if (found) {
-            return *found;
-        }
-        // マッピングに存在しない文字列の場合
         throw std::runtime_error(std::string("Failed to convert string to enum: ") + jsonValue);
     }
 
 private:
-    /// @note エントリはSortedHashArrayMapに保持する（キー->値 / 値->キーで2方向検索を高速化）
-    collection::SortedHashArrayMap<std::string_view, ValueType, N> nameToValue_{}; ///< 名前からenum値へのマップ。
-    collection::SortedHashArrayMap<ValueType, std::string_view, N> valueToName_{}; ///< enum値から名前へのマップ。
+    const MapType* map_{}; ///< 外部で定義されたマップへの参照（ポインタで保持）
 };
+
+/// @brief JsonEnumMap の作成ヘルパー（配列から型を推論して作る）
+export template <typename Enum, std::size_t N>
+constexpr auto makeJsonEnumMap(const EnumEntry<Enum> (&entries)[N]) {
+    return JsonEnumMap<Enum, N>(entries);
+}
+
+/// @brief JsonEnumField を簡単に作るヘルパー（MapType を推論）
+export template <typename MemberPtrType, typename MapType>
+constexpr auto makeJsonEnumField(MemberPtrType memberPtr, const char* keyName,
+    const MapType& map, bool req = false) {
+    return JsonEnumField<MemberPtrType, MapType>(memberPtr, keyName, map, req);
+}
 
 // ******************************************************************************** コンテナ用
 
@@ -287,12 +315,6 @@ private:
 export template <typename MemberPtrType>
 constexpr auto makeJsonSetField(MemberPtrType memberPtr, const char* keyName, bool req = false) {
     return JsonSetField<MemberPtrType>(memberPtr, keyName, req);
-}
-
-/// @brief JsonField を生成するヘルパー関数（CTAD 回避用）
-export template <typename MemberPtrType>
-constexpr auto makeJsonField(MemberPtrType memberPtr, const char* keyName, bool req = false) {
-    return JsonField<MemberPtrType>(memberPtr, keyName, req);
 }
 
 // ******************************************************************************** トークン種別毎の分岐用
