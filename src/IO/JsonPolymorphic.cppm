@@ -142,81 +142,42 @@ PtrType readPolymorphicInstanceOrNull(
     return instance;
 }
 
-/// @brief ポリモーフィック型（unique_ptr<基底クラス>）用のJsonField派生クラス。
-/// @tparam MemberPtr unique_ptr<基底クラス>メンバー変数へのポインタ。
-/// @tparam Entries 型名とファクトリ関数のマッピング配列への参照。
-export template <typename MemberPtrType>
-    requires IsSmartOrRawPointer<MemberPointerValueType<MemberPtrType>>
-struct JsonPolymorphicField : JsonFieldBase<MemberPtrType> {
-    using ValueType = MemberPointerValueType<MemberPtrType>; 
-    using Base = JsonFieldBase<MemberPtrType>;
-    using BaseType = typename PointerElementType<ValueType>::type;
+// Helper: obtain the type name for an object by scanning entries map (used for writing polymorphic objects)
+export template <typename BaseType, typename Map>
+std::string getTypeNameFromMap(const BaseType& obj, Map entries) {
+    for (const auto& it : entries) {
+        auto testObj = it.value();
+        if (typeid(obj) == typeid(*testObj)) {
+            return std::string(it.key);
+        }
+    }
+    throw std::runtime_error(std::string("Unknown polymorphic type: ") + typeid(obj).name());
+}
+
+// PolymorphicConverter: a Converter matching IsJsonConverter for pointer types (unique_ptr/shared_ptr/raw)
+export template <typename PtrType>
+    requires IsSmartOrRawPointer<PtrType>
+struct PolymorphicConverter {
+    using Value = PtrType;
+    using Element = typename PointerElementType<std::remove_cvref_t<Value>>::type;
     using Key = std::string_view;
-    using Value = PolymorphicTypeFactory<ValueType>;
-    using Map = collection::MapReference<Key, Value>;
+    using Factory = PolymorphicTypeFactory<PtrType>;
+    using Map = collection::MapReference<Key, Factory>;
 
-    /// @brief ポリモーフィック型用フィールドのコンストラクタ。
-    /// @param memberPtr メンバー変数へのポインタ。
-    /// @param keyName JSONキー名。
-    /// @param entries 型名からファクトリ関数へのマッピング。
-    /// @param jsonKey JSON内で型を判別するためのキー名。
-    /// @param req 必須フィールドかどうか。
-    constexpr explicit JsonPolymorphicField(MemberPtrType memberPtr, const char* keyName,
-        Map entries, const char* jsonKey = "type", bool req = true)
-        : Base(memberPtr, keyName, req), nameToEntry_(entries), jsonKey_(jsonKey) {}
+    // Accept a MapReference-like object (SortedHashArrayMap is convertible)
+    template <typename Entries>
+    constexpr explicit PolymorphicConverter(const Entries& entries, const char* jsonKey = "type", bool allowNull = true)
+        : entries_(entries), jsonKey_(jsonKey), allowNull_(allowNull) {}
 
-    /// @brief ポリモーフィック型用フィールドのコンストラクタ（SortedHashArrayMap版）。
-    /// @param memberPtr メンバー変数へのポインタ。
-    /// @param keyName JSONキー名。
-    /// @param entries 型名からファクトリ関数へのマッピング（SortedHashArrayMap）。
-    /// @param jsonKey JSON内で型を判別するためのキー名。
-    /// @param req 必須フィールドかどうか。
-    template <size_t N, typename Traits>
-    constexpr explicit JsonPolymorphicField(MemberPtrType memberPtr, const char* keyName,
-        const collection::SortedHashArrayMap<Key, Value, N, Traits>& entries,
-        const char* jsonKey = "type", bool req = true)
-        : Base(memberPtr, keyName, req), nameToEntry_(entries), jsonKey_(jsonKey) {}
-
-    /// @brief 型名から対応するエントリを検索する。
-    /// @param typeName 検索する型名。
-    /// @return 見つかった場合はエントリへのポインタ、見つからない場合はnullptr。
-    const PolymorphicTypeFactory<ValueType>* findEntry(std::string_view typeName) const {
-        return nameToEntry_.findValue(typeName);
+    PtrType read(JsonParser& parser) const {
+        if (allowNull_) return readPolymorphicInstanceOrNull<PtrType>(parser, entries_, jsonKey_);
+        return readPolymorphicInstance<PtrType>(parser, entries_, jsonKey_);
     }
 
-    /// @brief オブジェクトから型名を取得する。
-    /// @param obj 対象オブジェクト。
-    /// @return 型名。
-    /// @throws std::runtime_error マッピングに存在しない型の場合。
-    std::string getTypeName(const BaseType& obj) const {
-        // 全エントリを走査し、typeidで一致する型名を検索
-        for (const auto& it : nameToEntry_) {
-            auto testObj = it.value();
-            if (typeid(obj) == typeid(*testObj)) {
-                return std::string(it.key);
-            }
-        }
-        // マッピングに存在しない型の場合
-        throw std::runtime_error(std::string("Unknown polymorphic type: ") + typeid(obj).name());
-    }
-
-    /// @brief JsonParser から polymorphic オブジェクトを読み込む。
-    /// @param parser JsonParser の参照。現在の位置にオブジェクトか null があることを期待する。
-    /// @return 要素型 T を保持するポインタ（unique_ptr/shared_ptr/生ポインタ）。null の場合は nullptr を返す。
-    ValueType fromJson(JsonParser& parser) const {
-        return readPolymorphicInstanceOrNull<ValueType>(parser, nameToEntry_, jsonKey_);
-    }
-
-    /// @brief JsonWriter に対して polymorphic オブジェクトを書き出す。
-    /// @param writer JsonWriter の参照。
-    /// @param ptr 書き込み対象の unique_ptr（null 可）。
-    void toJson(JsonWriter& writer, const ValueType& ptr) const {
-        if (!ptr) {
-            writer.null();
-            return;
-        }
+    void write(JsonWriter& writer, const PtrType& ptr) const {
+        if (!ptr) { writer.null(); return; }
         writer.startObject();
-        std::string typeName = getTypeName(*ptr);
+        std::string typeName = getTypeNameFromMap(*ptr, entries_);
         writer.key(jsonKey_);
         writer.writeObject(typeName);
         auto& fields = ptr->jsonFields();
@@ -225,120 +186,46 @@ struct JsonPolymorphicField : JsonFieldBase<MemberPtrType> {
     }
 
 private:
-    Map nameToEntry_;     ///< 型名からファクトリ関数へのマッピング。
-    const char* jsonKey_; ///< JSON内で型を判別するキー名。
+    Map entries_{};
+    const char* jsonKey_{};
+    bool allowNull_{true};
 };
 
-/// @brief ポリモーフィックな配列（vector<std::unique_ptr<BaseType>>）用のフィールド。
-export template <typename MemberPtrType>
-    requires IsVectorOfPointers<MemberPointerValueType<MemberPtrType>>
-struct JsonPolymorphicArrayField : JsonFieldBase<MemberPtrType> {
-    using ValueType = MemberPointerValueType<MemberPtrType>; 
-    using Base = JsonFieldBase<MemberPtrType>;
-    using ElementPtrType = typename ValueType::value_type; ///< ポインタ要素型。
-    using BaseType = typename PointerElementType<ElementPtrType>::type;
-    using Key = std::string_view;
-    using Value = PolymorphicTypeFactory<ElementPtrType>;
-    using Map = collection::MapReference<Key, Value>;
+// Convenience factory: build a JsonField (with a static PolymorphicConverter) from an entries map
+export template <typename MemberPtrType, typename MapType>
+constexpr auto makeJsonPolymorphicField(MemberPtrType memberPtr, const char* keyName, const MapType& entries, const char* jsonKey = "type", bool req = true) requires IsSmartOrRawPointer<MemberPointerValueType<MemberPtrType>> {
+    using Value = MemberPointerValueType<MemberPtrType>;
+    static const PolymorphicConverter<Value> conv(entries, jsonKey);
+    return JsonField<MemberPtrType, PolymorphicConverter<Value>>(memberPtr, keyName, std::cref(conv), req);
+}
 
-    /// @brief コンストラクタ。
-    /// @param memberPtr メンバー変数へのポインタ。
-    /// @param keyName JSONキー名。
-    /// @param entries 型名からファクトリ関数へのマッピング。
-    /// @param jsonKey JSON内で型を判別するキー名。
-    /// @param req 必須フィールドかどうか。
-    explicit JsonPolymorphicArrayField(MemberPtrType memberPtr, const char* keyName,
-        Map entries, const char* jsonKey = "type", bool req = true)
-        : Base(memberPtr, keyName, req), nameToEntry_(entries), jsonKey_(jsonKey) {}
+// Overload for SortedHashArrayMap-style entries
+export template <typename MemberPtrType, size_t N, typename Traits>
+constexpr auto makeJsonPolymorphicField(MemberPtrType memberPtr, const char* keyName, const collection::SortedHashArrayMap<std::string_view, PolymorphicTypeFactory<MemberPointerValueType<MemberPtrType>>, N, Traits>& entries, const char* jsonKey = "type", bool req = true) {
+    return makeJsonPolymorphicField(memberPtr, keyName, collection::MapReference<std::string_view, PolymorphicTypeFactory<MemberPointerValueType<MemberPtrType>>>(entries), jsonKey, req);
+} 
 
-    /// @brief コンストラクタ（SortedHashArrayMap版）。
-    /// @param memberPtr メンバーポインタ。
-    /// @param keyName JSONキー名。
-    /// @param entries 型名とファクトリ関数のマッピング。
-    /// @param jsonKey JSON内で型を判別するキー名。
-    /// @param req 必須フィールドかどうか。
-    template <size_t N, typename Traits>
-    explicit JsonPolymorphicArrayField(MemberPtrType memberPtr, const char* keyName,
-        const collection::SortedHashArrayMap<Key, Value, N, Traits>& entries,
-        const char* jsonKey = "type", bool req = true)
-        : JsonPolymorphicArrayField(memberPtr, keyName, Map(entries), jsonKey, req) {}
+// JsonPolymorphicField and JsonPolymorphicArrayField have been removed. Use the converter-based helpers (makeJsonPolymorphicField / makeJsonPolymorphicArrayField) instead.
 
-    /// @brief 型名から対応するファクトリ関数を検索する。
-    /// @param typeName 検索する型名。
-    /// @return 見つかった場合はファクトリ関数へのポインタ。
-    const PolymorphicTypeFactory<ElementPtrType>* findEntry(std::string_view typeName) const {
-        return nameToEntry_.findValue(typeName);
-    }
+/// @brief ポリモーフィックな配列（vector<std::unique_ptr<BaseType>>）用のファクトリ helper
+export template <typename MemberPtrType, typename MapType>
+constexpr auto makeJsonPolymorphicArrayField(MemberPtrType memberPtr, const char* keyName, const MapType& entries, const char* jsonKey = "type", bool req = true) {
+    using Container = MemberPointerValueType<MemberPtrType>;
+    using ElementPtr = std::remove_cvref_t<std::ranges::range_value_t<Container>>;
+    static const PolymorphicConverter<ElementPtr> elemConv(entries, jsonKey);
+    static const ContainerConverter<Container, PolymorphicConverter<ElementPtr>> conv(elemConv);
+    return JsonField<MemberPtrType, ContainerConverter<Container, PolymorphicConverter<ElementPtr>>>(memberPtr, keyName, std::cref(conv), req);
+}
+// Convenience factory: build a JsonField for a container of polymorphic pointer elements
+export template <typename MemberPtrType, typename MapType>
+constexpr auto makeJsonPolymorphicArrayField(MemberPtrType memberPtr, const char* keyName, const MapType& entries, const char* jsonKey = "type", bool req = true) requires IsContainer<MemberPointerValueType<MemberPtrType>> && IsSmartOrRawPointer<std::remove_cvref_t<std::ranges::range_value_t<MemberPointerValueType<MemberPtrType>>>> {
+    using Container = MemberPointerValueType<MemberPtrType>;
+    using ElementPtr = std::remove_cvref_t<std::ranges::range_value_t<Container>>;
+    static const PolymorphicConverter<ElementPtr> elemConv(entries, jsonKey);
+    static const ContainerConverter<Container, PolymorphicConverter<ElementPtr>> conv(elemConv);
+    return JsonField<MemberPtrType, ContainerConverter<Container, PolymorphicConverter<ElementPtr>>>(memberPtr, keyName, std::cref(conv), req);
+}
 
-    /// @brief JsonParserからポリモーフィック配列を読み取る。
-    /// @param parser JsonParserの参照。
-    /// @return 読み取った配列。
-    ValueType fromJson(JsonParser& parser) const {
-        ValueType out{};
-        parser.startArray();
-        while (!parser.nextIsEndArray()) {
-            auto elem = readPolymorphicInstanceOrNull<ElementPtrType>(parser, nameToEntry_, jsonKey_);
-            out.push_back(std::move(elem));
-        }
-        parser.endArray();
-        return out;
-    }
 
-    /// @brief JsonWriterにポリモーフィック配列を書き出す。
-    /// @param writer JsonWriterの参照。
-    /// @param container 書き出すコンテナ。
-    void toJson(JsonWriter& writer, const ValueType& container) const {
-        writer.startArray();
-        for (const auto& elem : container) {
-            writeElement(writer, elem, nameToEntry_, jsonKey_);
-        }
-        writer.endArray();
-    }
-
-    /// @brief オブジェクトから型名を取得する。
-    /// @param obj 対象オブジェクト。
-    /// @return 型名。
-    std::string getTypeName(const BaseType& obj) const {
-        return getTypeNameFromMap(obj, nameToEntry_);
-    }
-
-private:
-    Map nameToEntry_; ///< 型名からファクトリ関数へのマッピング。
-    const char* jsonKey_; ///< JSON内で型を判別するキー名。
-
-    /// @brief オブジェクトから型名を検索する。
-    /// @param obj 対象オブジェクト。
-    /// @param entries 型名とファクトリ関数のマッピング。
-    /// @return 型名。
-    static std::string getTypeNameFromMap(const BaseType& obj, Map entries) {
-        for (const auto& it : entries) {
-            auto testObj = it.value();
-            if (typeid(obj) == typeid(*testObj)) {
-                return std::string(it.key);
-            }
-        }
-        throw std::runtime_error(std::string("Unknown polymorphic type: ") + typeid(obj).name());
-    }
-
-    /// @brief ポリモーフィック要素を書き出す。
-    /// @param writer JsonWriterの参照。
-    /// @param ptr 書き出す要素。
-    /// @param entries 型名とファクトリ関数のマッピング。
-    /// @param jsonKey JSON内で型を判別するキー名。
-    static void writeElement(JsonWriter& writer, const ElementPtrType& ptr,
-        Map entries, const char* jsonKey) {
-        if (!ptr) {
-            writer.null();
-            return;
-        }
-        writer.startObject();
-        std::string typeName = getTypeNameFromMap(*ptr, entries);
-        writer.key(jsonKey);
-        writer.writeObject(typeName);
-        auto& fields = ptr->jsonFields();
-        fields.writeFieldsOnly(writer, std::to_address(ptr));
-        writer.endObject();
-    }
-};
 
 } // namespace rai::json

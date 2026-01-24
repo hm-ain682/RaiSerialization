@@ -164,8 +164,8 @@ struct Drawing {
     const rai::json::IJsonFieldSet& jsonFields() const {
         static const auto fields = rai::json::makeJsonFieldSet<Drawing>(
             // 第4引数でタイプ識別キーをカスタマイズ可能（デフォルトは"type"）
-            rai::json::JsonPolymorphicField(&Drawing::mainShape, "mainShape", shapeEntriesMap, "kind"),
-            rai::json::JsonPolymorphicArrayField(&Drawing::shapes, "shapes", shapeEntriesMap, "kind")
+            rai::json::makeJsonPolymorphicField(&Drawing::mainShape, "mainShape", shapeEntriesMap, "kind"),
+            rai::json::makeJsonPolymorphicArrayField(&Drawing::shapes, "shapes", shapeEntriesMap, "kind")
         );
         return fields;
     }

@@ -287,7 +287,7 @@ T readValue(JsonParser& parser) {
 /// @param writer 出力先の JsonWriter
 /// @param range 書き出す範囲
 export template <typename T>
-    requires IsRangeContainer<T>
+    requires IsContainer<T>
 void writeValue(JsonWriter& writer, const T& range) {
     writer.startArray();
     for (const auto& elem : range) {
@@ -301,7 +301,7 @@ void writeValue(JsonWriter& writer, const T& range) {
 /// @param parser 入力元の JsonParser
 /// @return 読み取ったコンテナを返します
 export template <typename T>
-    requires (IsRangeContainer<T> &&
+    requires (IsContainer<T> &&
         requires(T& c, std::ranges::range_value_t<T>&& v) { c.push_back(std::move(v)); })
 T readValue(JsonParser& parser) {
     using Element = std::ranges::range_value_t<T>;
@@ -319,7 +319,7 @@ T readValue(JsonParser& parser) {
 /// @param parser 入力元の JsonParser
 /// @return 読み取ったコンテナを返します
 export template <typename T>
-    requires (IsRangeContainer<T> &&
+    requires (IsContainer<T> &&
         requires(T& c, std::ranges::range_value_t<T>&& v) { c.insert(std::move(v)); })
 T readValue(JsonParser& parser) {
     using Element = std::ranges::range_value_t<T>;

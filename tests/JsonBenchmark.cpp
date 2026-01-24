@@ -142,7 +142,7 @@ struct ComplexData {
         static const auto fields = makeJsonFieldSet<ComplexData>(
             makeJsonField(&ComplexData::name, "name"),
             makeJsonField(&ComplexData::level, "level"),
-            JsonPolymorphicField(&ComplexData::node, "node", baseNodeEntriesMap),
+            makeJsonPolymorphicField(&ComplexData::node, "node", baseNodeEntriesMap),
             makeJsonField(&ComplexData::items, "items"),
             makeJsonField(&ComplexData::collections, "collections")
         );

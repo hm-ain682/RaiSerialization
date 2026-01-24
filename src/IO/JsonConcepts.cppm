@@ -74,11 +74,11 @@ concept IsStdVariant = requires {
 template <typename T>
 concept LikesString = std::is_same_v<T, std::string> || std::is_same_v<T, std::string_view>;
 
-/// @brief string 系を除くレンジ（配列/コンテナ）を表す concept（名前を `IsRangeContainer` に変更）。
+/// @brief string 系を除くレンジ（配列/コンテナ）を表す concept（名前を `IsContainer` に変更）。
 /// @details std::ranges::range を満たし、かつ `LikesString` を除外することで
 ///          `std::string` を配列として誤判定しないようにします。
 template<typename T>
-concept IsRangeContainer = std::ranges::range<T> && !LikesString<T>;
+concept IsContainer = std::ranges::range<T> && !LikesString<T>;
 
 /// @brief 常にfalseを返す補助変数テンプレート。
 template <typename>

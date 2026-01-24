@@ -136,8 +136,8 @@ struct Holder {
 
     const IJsonFieldSet& jsonFields() const {
         static const auto fields = makeJsonFieldSet<Holder>(
-            JsonPolymorphicField(&Holder::item, "item", pbEntriesMap, "kind"),
-            JsonPolymorphicArrayField(&Holder::arr, "arr", pbEntriesMap, "kind")
+            makeJsonPolymorphicField(&Holder::item, "item", pbEntriesMap, "kind"),
+            makeJsonPolymorphicArrayField(&Holder::arr, "arr", pbEntriesMap, "kind")
         );
         return fields;
     }
