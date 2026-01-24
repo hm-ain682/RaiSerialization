@@ -147,9 +147,9 @@ PtrType readPolymorphicInstanceOrNull(
 /// @tparam Entries 型名とファクトリ関数のマッピング配列への参照。
 export template <typename MemberPtrType>
     requires IsSmartOrRawPointer<MemberPointerValueType<MemberPtrType>>
-struct JsonPolymorphicField : JsonField<MemberPtrType> {
+struct JsonPolymorphicField : JsonFieldBase<MemberPtrType> {
     using ValueType = MemberPointerValueType<MemberPtrType>; 
-    using Base = JsonField<MemberPtrType>;
+    using Base = JsonFieldBase<MemberPtrType>;
     using BaseType = typename PointerElementType<ValueType>::type;
     using Key = std::string_view;
     using Value = PolymorphicTypeFactory<ValueType>;
@@ -232,9 +232,9 @@ private:
 /// @brief ポリモーフィックな配列（vector<std::unique_ptr<BaseType>>）用のフィールド。
 export template <typename MemberPtrType>
     requires IsVectorOfPointers<MemberPointerValueType<MemberPtrType>>
-struct JsonPolymorphicArrayField : JsonField<MemberPtrType> {
+struct JsonPolymorphicArrayField : JsonFieldBase<MemberPtrType> {
     using ValueType = MemberPointerValueType<MemberPtrType>; 
-    using Base = JsonField<MemberPtrType>;
+    using Base = JsonFieldBase<MemberPtrType>;
     using ElementPtrType = typename ValueType::value_type; ///< ポインタ要素型。
     using BaseType = typename PointerElementType<ElementPtrType>::type;
     using Key = std::string_view;

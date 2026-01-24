@@ -540,9 +540,9 @@ struct TokenDispatchHolder {
     }
 
     const IJsonFieldSet& jsonFields() const {
+        static const auto entries = getFromEntries();
         static const auto fields = makeJsonFieldSet<TokenDispatchHolder>(
-            JsonTokenDispatchField<decltype(&TokenDispatchHolder::value)>(
-                &TokenDispatchHolder::value, "value", getFromEntries(), toConverter)
+            makeJsonTokenDispatchField(&TokenDispatchHolder::value, "value", entries, toConverter)
         );
         return fields;
     }
