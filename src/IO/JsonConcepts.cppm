@@ -80,10 +80,6 @@ concept LikesString = std::is_same_v<T, std::string> || std::is_same_v<T, std::s
 template<typename T>
 concept IsContainer = std::ranges::range<T> && !LikesString<T>;
 
-/// @brief 常にfalseを返す補助変数テンプレート。
-template <typename>
-inline constexpr bool AlwaysFalse = false;
-
 /// @brief std::unique_ptr を判定する concept（element_type / deleter_type を確認し正確に判定）。
 template <typename T>
 concept IsUniquePtr = requires {

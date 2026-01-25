@@ -444,8 +444,8 @@ struct PointerHolder {
 
     const IJsonFieldSet& jsonFields() const {
         static const auto fields = makeJsonFieldSet<PointerHolder>(
-            makeJsonField(&PointerHolder::ptr, "ptr"),
-            makeJsonField(&PointerHolder::ptrVec, "ptrVec")
+            makeJsonUniquePtrField(&PointerHolder::ptr, "ptr"),
+            makeJsonContainerField(&PointerHolder::ptrVec, "ptrVec")
         );
         return fields;
     }
@@ -837,7 +837,7 @@ TEST(JsonElementConverterTest, ContainerUsesElementConverter)
         std::vector<RWElement> v;
         const IJsonFieldSet& jsonFields() const {
             static const auto fields = makeJsonFieldSet<Holder>(
-                makeJsonField(&Holder::v, "v")
+                makeJsonContainerField(&Holder::v, "v")
             );
             return fields;
         }
@@ -858,7 +858,7 @@ TEST(JsonElementConverterTest, UniquePtrUsesElementConverter)
         std::unique_ptr<RWElement> item;
         const IJsonFieldSet& jsonFields() const {
             static const auto fields = makeJsonFieldSet<Holder>(
-                makeJsonField(&Holder::item, "item")
+                makeJsonUniquePtrField(&Holder::item, "item")
             );
             return fields;
         }
@@ -883,7 +883,7 @@ TEST(JsonElementConverterTest, VariantUsesElementConverter)
         std::variant<int, RWElement> v;
         const IJsonFieldSet& jsonFields() const {
             static const auto fields = makeJsonFieldSet<Holder>(
-                makeJsonField(&Holder::v, "v")
+                makeJsonVariantField(&Holder::v, "v")
             );
             return fields;
         }
@@ -904,7 +904,7 @@ TEST(JsonElementConverterTest, NestedContainerUsesElementConverter)
         std::vector<std::vector<RWElement>> v;
         const IJsonFieldSet& jsonFields() const {
             static const auto fields = makeJsonFieldSet<Holder>(
-                makeJsonField(&Holder::v, "v")
+                makeJsonContainerField(&Holder::v, "v")
             );
             return fields;
         }
