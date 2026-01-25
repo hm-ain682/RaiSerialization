@@ -444,11 +444,13 @@ struct PointerHolder {
 
     const IJsonFieldSet& jsonFields() const {
             // Provide explicit element/container converter for vector of unique_ptr<string>
-            static const UniquePtrConverter<std::unique_ptr<std::string>> elemConv{};
-            static const ContainerConverter<std::vector<std::unique_ptr<std::string>>, decltype(elemConv)> conv(elemConv);
+            using Element = std::unique_ptr<std::string>;
+            auto& elemConv = getUniquePtrConverter<Element>();
+            static const ContainerConverter<std::vector<Element>, std::remove_cvref_t<decltype(elemConv)>>
+                containerConverter;
             static const auto fields = makeJsonFieldSet<PointerHolder>(
                 makeJsonUniquePtrField(&PointerHolder::ptr, "ptr"),
-                makeJsonContainerField(&PointerHolder::ptrVec, "ptrVec", conv)
+                makeJsonContainerField(&PointerHolder::ptrVec, "ptrVec", containerConverter)
             );
             return fields;
     }

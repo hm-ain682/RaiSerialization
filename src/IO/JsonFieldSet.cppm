@@ -113,7 +113,7 @@ public:
             using FieldType = std::remove_cvref_t<decltype(field)>;
 
             // デフォルトの toJson に委譲（明示的な分岐不要）
-            field.toJson(writer, value);
+            field.write(writer, value);
         });
     }
 private:
@@ -184,7 +184,7 @@ public:
             using ValueType = typename FieldType::ValueType;
 
             // デフォルトの fromJson に委譲（明示的な分岐不要）
-            owner->*(field.member) = field.fromJson(parser);
+            owner->*(field.member) = field.read(parser);
         });
 
         return true;
