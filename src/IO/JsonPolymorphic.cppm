@@ -28,7 +28,7 @@ import rai.json.json_writer;
 import rai.json.json_parser;
 import rai.json.json_token_manager;
 import rai.json.json_field;
-import rai.json.json_value_io;
+
 import rai.collection.sorted_hash_array_map;
 
 namespace rai::json {
@@ -142,7 +142,7 @@ PtrType readPolymorphicInstanceOrNull(
     return instance;
 }
 
-// Helper: obtain the type name for an object by scanning entries map (used for writing polymorphic objects)
+// ヘルパ: entries マップを走査してオブジェクトの型名を取得します（ポリモーフィック書き出し時に使用）
 export template <typename BaseType, typename Map>
 std::string getTypeNameFromMap(const BaseType& obj, Map entries) {
     for (const auto& it : entries) {
@@ -154,7 +154,7 @@ std::string getTypeNameFromMap(const BaseType& obj, Map entries) {
     throw std::runtime_error(std::string("Unknown polymorphic type: ") + typeid(obj).name());
 }
 
-// PolymorphicConverter: a Converter matching IsJsonConverter for pointer types (unique_ptr/shared_ptr/raw)
+// PolymorphicConverter: ポインタ型（unique_ptr/shared_ptr/生ポインタ）に対して IsJsonConverter を満たすコンバータ
 export template <typename PtrType>
     requires IsSmartOrRawPointer<PtrType>
 struct PolymorphicConverter {
@@ -170,12 +170,17 @@ struct PolymorphicConverter {
         : entries_(entries), jsonKey_(jsonKey), allowNull_(allowNull) {}
 
     PtrType read(JsonParser& parser) const {
-        if (allowNull_) return readPolymorphicInstanceOrNull<PtrType>(parser, entries_, jsonKey_);
+        if (allowNull_) {
+            return readPolymorphicInstanceOrNull<PtrType>(parser, entries_, jsonKey_);
+        }
         return readPolymorphicInstance<PtrType>(parser, entries_, jsonKey_);
     }
 
     void write(JsonWriter& writer, const PtrType& ptr) const {
-        if (!ptr) { writer.null(); return; }
+        if (!ptr) {
+            writer.null();
+            return;
+        }
         writer.startObject();
         std::string typeName = getTypeNameFromMap(*ptr, entries_);
         writer.key(jsonKey_);

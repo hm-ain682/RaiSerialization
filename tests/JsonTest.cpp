@@ -73,7 +73,7 @@ struct C : public A {
 };
 
 // ********************************************************************************
-// Polymorphic field/array tests for custom discriminator key
+// カスタム判別キーを使ったポリモーフィックなフィールド/配列のテスト
 // ********************************************************************************
 
 struct PB {
@@ -514,16 +514,16 @@ struct TokenDispatchHolder {
     static const auto& getFromEntries() {
         using V = DispatchValue;
         static const std::array<FromJsonEntry<V>, JsonTokenTypeCount> entries = {{
-            nullptr,  // EndOfStream
-            nullptr,  // Null
-            [](JsonParser& p) -> V { bool b; p.readTo(b); return V{ b }; },  // Bool
-            [](JsonParser& p) -> V { int64_t i; p.readTo(i); return V{ i }; },  // Integer
-            nullptr,  // Number
-            [](JsonParser& p) -> V { std::string s; p.readTo(s); return V{ s }; },  // String
-            nullptr,  // Key
-            nullptr,  // StartObject
-            nullptr,  // EndObject
-            nullptr,  // StartArray
+            nullptr,  // ストリーム終端 (EndOfStream)
+            nullptr,  // Null（ヌル）
+            [](JsonParser& p) -> V { bool b; p.readTo(b); return V{ b }; },  // Bool（真偽値）
+            [](JsonParser& p) -> V { int64_t i; p.readTo(i); return V{ i }; },  // Integer（整数）
+            nullptr,  // Number（数値）
+            [](JsonParser& p) -> V { std::string s; p.readTo(s); return V{ s }; },  // String（文字列）
+            nullptr,  // Key（オブジェクトのキー）
+            nullptr,  // StartObject（オブジェクト開始）
+            nullptr,  // EndObject（オブジェクト終了）
+            nullptr,  // StartArray（配列開始）
             nullptr,  // EndArray
             nullptr,  // Error
         }};
@@ -812,4 +812,157 @@ TEST(JsonContainerFieldTest, ObjectElementReadWriteRoundTrip) {
     SetFieldObjectHolder original;
     original.points = {{1, 2}, {3, 4}, {5, 6}};
     testJsonRoundTrip(original, "{points:[{x:1,y:2},{x:3,y:4},{x:5,y:6}]}");
+}
+
+// ********************************************************************************
+// Tests: ensure element-converter selection is used for container/variant/unique_ptr
+// ********************************************************************************
+
+struct RWElement {
+    int x = 0;
+
+    const IJsonFieldSet& jsonFields() const {
+        static const auto fields = makeJsonFieldSet<RWElement>(
+            makeJsonField(&RWElement::x, "x")
+        );
+        return fields;
+    }
+
+    bool operator==(const RWElement& other) const { return x == other.x; }
+};
+
+TEST(JsonElementConverterTest, ContainerUsesElementConverter)
+{
+    struct Holder {
+        std::vector<RWElement> v;
+        const IJsonFieldSet& jsonFields() const {
+            static const auto fields = makeJsonFieldSet<Holder>(
+                makeJsonField(&Holder::v, "v")
+            );
+            return fields;
+        }
+        bool operator==(const Holder& other) const { return v == other.v; }
+        bool equals(const Holder& other) const { return *this == other; }
+    };
+
+    Holder original;
+    RWElement e;
+    e.x = 11;
+    original.v.push_back(e);
+    testJsonRoundTrip(original, "{v:[{x:11}]}");
+}
+
+TEST(JsonElementConverterTest, UniquePtrUsesElementConverter)
+{
+    struct Holder {
+        std::unique_ptr<RWElement> item;
+        const IJsonFieldSet& jsonFields() const {
+            static const auto fields = makeJsonFieldSet<Holder>(
+                makeJsonField(&Holder::item, "item")
+            );
+            return fields;
+        }
+        bool operator==(const Holder& other) const {
+            if (item == nullptr || other.item == nullptr) {
+                return item == other.item;
+            }
+            return *item == *other.item;
+        }
+        bool equals(const Holder& other) const { return *this == other; }
+    };
+
+    Holder original;
+    original.item = std::make_unique<RWElement>();
+    original.item->x = 21;
+    testJsonRoundTrip(original, "{item:{x:21}}" );
+}
+
+TEST(JsonElementConverterTest, VariantUsesElementConverter)
+{
+    struct Holder {
+        std::variant<int, RWElement> v;
+        const IJsonFieldSet& jsonFields() const {
+            static const auto fields = makeJsonFieldSet<Holder>(
+                makeJsonField(&Holder::v, "v")
+            );
+            return fields;
+        }
+        bool operator==(const Holder& other) const {
+            return v == other.v;
+        }
+        bool equals(const Holder& other) const { return *this == other; }
+    };
+
+    Holder original;
+    original.v = RWElement{42};
+    testJsonRoundTrip(original, "{v:{x:42}}" );
+}
+
+TEST(JsonElementConverterTest, NestedContainerUsesElementConverter)
+{
+    struct Holder {
+        std::vector<std::vector<RWElement>> v;
+        const IJsonFieldSet& jsonFields() const {
+            static const auto fields = makeJsonFieldSet<Holder>(
+                makeJsonField(&Holder::v, "v")
+            );
+            return fields;
+        }
+        bool operator==(const Holder& other) const { return v == other.v; }
+        bool equals(const Holder& other) const { return *this == other; }
+    };
+
+    Holder original;
+    original.v.push_back({RWElement{1}, RWElement{2}});
+    testJsonRoundTrip(original, "{v:[[{x:1},{x:2}]]}" );
+}
+
+TEST(JsonElementConverterExplicitTest, ContainerOfEnumWithExplicitContainerConverter)
+{
+    enum class Color { Red, Blue };
+    constexpr EnumEntry<Color> entries[] = {{Color::Red, "Red"}, {Color::Blue, "Blue"}};
+    using MapType = JsonEnumMap<Color, 2>;
+    static const MapType cmap = makeJsonEnumMap(entries);
+
+    struct Holder {
+        std::vector<Color> v;
+        const IJsonFieldSet& jsonFields() const {
+            static const EnumConverter<MapType> econv(cmap);
+            static const ContainerConverter<std::vector<Color>, EnumConverter<MapType>> conv(econv);
+            static const auto fields = makeJsonFieldSet<Holder>(
+                makeJsonContainerField(&Holder::v, "v", conv)
+            );
+            return fields;
+        }
+        bool operator==(const Holder& other) const { return v == other.v; }
+        bool equals(const Holder& other) const { return *this == other; }
+    };
+
+    Holder original;
+    original.v = {Color::Red, Color::Blue};
+    testJsonRoundTrip(original, "{v:[\"Red\",\"Blue\"]}");
+}
+
+TEST(JsonElementConverterExplicitTest, ContainerWithExplicitElementConverter)
+{
+    struct Holder {
+        std::vector<RWElement> v;
+        const IJsonFieldSet& jsonFields() const {
+            // Provide an explicit container converter instance (use ContainerConverter to avoid copying element converters)
+            static const JsonFieldsConverter<RWElement> elemConv{};
+            static const ContainerConverter<std::vector<RWElement>, JsonFieldsConverter<RWElement>> conv(elemConv);
+            static const auto fields = makeJsonFieldSet<Holder>(
+                makeJsonContainerField(&Holder::v, "v", conv)
+            );
+            return fields;
+        }
+        bool operator==(const Holder& other) const { return v == other.v; }
+        bool equals(const Holder& other) const { return *this == other; }
+    };
+
+    Holder original;
+    RWElement e;
+    e.x = 11;
+    original.v.push_back(e);
+    testJsonRoundTrip(original, "{v:[{x:11}]}");
 }

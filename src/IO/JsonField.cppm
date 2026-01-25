@@ -30,16 +30,16 @@ import rai.json.json_concepts;
 import rai.json.json_writer;
 import rai.json.json_parser;
 import rai.json.json_token_manager;
-import rai.json.json_value_io;
+
 import rai.collection.sorted_hash_array_map;
 
 namespace rai::json {
 
-// ******************************************************************************** メタプログラミング用の型特性
+// ******************************************************************************** メタプログラミング、concept
 
 /// @brief メンバーポインタの特性を抽出するメタ関数。
 /// @tparam T メンバーポインタ型。
-export template <typename T>
+template <typename T>
 struct MemberPointerTraits;
 
 template <typename Owner, typename Value>
@@ -52,12 +52,10 @@ struct MemberPointerTraits<Value Owner::*> {
 export template <typename MemberPtrType>
 using MemberPointerValueType = typename MemberPointerTraits<MemberPtrType>::ValueType;
 
-// ******************************************************************************** 共通基底
-
 // JsonEnumMapのように、enum <-> 文字列名の双方向マップを提供する型のconcept。
 export template <typename Converter, typename Value>
-concept IsJsonConverter
-    = requires { typename Converter::Value; }
+concept IsJsonConverter = std::is_class_v<Converter>
+    && requires { typename Converter::Value; }
     && std::is_same_v<typename Converter::Value, Value>
     && requires(const Converter& converter, JsonWriter& writer, const Value& value) {
         converter.write(writer, value);
@@ -67,38 +65,24 @@ concept IsJsonConverter
     };
 
 
-// ******************************************************************************** 共通基底
+// ******************************************************************************** フィールド
 
-// Note: JsonFieldBase was removed; use `JsonField<MemberPtrType, Converter>` and converter helpers
-// (e.g., `makeJsonField`, `makeJsonPolymorphicField`, `makeJsonPolymorphicArrayField`) instead.
-
-
-// ******************************************************************************** 基本型用
-
-
-
-// JsonField helper moved: see later makeJsonField implementation that selects
-// appropriate converter or falls back to JsonField for value_io-supported types.
-
-// -----------------------------------------------------------------------------
-// 新: JsonField とコンバータ群（既存の IsJsonConverter に合わせる）
-// -----------------------------------------------------------------------------
-
-/// @brief 新しいフィールド型（変換器を外部から渡す）
+/// @brief メンバー変数とJSON項目を対応付ける。
 export template <typename MemberPtrType, typename Converter>
     requires std::is_member_object_pointer_v<MemberPtrType>
-        && IsJsonConverter<Converter, MemberPointerValueType<MemberPtrType>>
 struct JsonField {
     using Traits = MemberPointerTraits<MemberPtrType>;
     using OwnerType = typename Traits::OwnerType;
     using ValueType = typename Traits::ValueType;
+    static_assert(IsJsonConverter<Converter, MemberPointerValueType<MemberPtrType>>,
+        "Converter must satisfy IsJsonConverter for the member value type");
 
-    // Construct by reference: the converter is owned/managed externally and must outlive the field
+    // 参照で構築: コンバータは外部で所有/管理され、フィールドより長く存続する必要があります
     constexpr explicit JsonField(MemberPtrType memberPtr, const char* keyName,
         std::reference_wrapper<const Converter> conv, bool req = false)
         : member(memberPtr), converterRef(conv), key(keyName), required(req) {}
 
-    // Convenience: accept a const Converter& and store a reference (caller must ensure lifetime)
+    // 便宜上のオーバーロード: const Converter& を受け取り参照を保存します（呼び出し側で寿命を保証してください）
     constexpr explicit JsonField(MemberPtrType memberPtr, const char* keyName,
         const Converter& conv, bool req = false)
         : member(memberPtr), converterRef(std::cref(conv)), key(keyName), required(req) {}
@@ -116,23 +100,38 @@ struct JsonField {
         return converterRef.get().read(parser);
     }
 
-    // For backward compatibility with existing code that expects toJson/fromJson
+    // 後方互換: 既存コードで toJson/fromJson を期待する場合に対応します
     void toJson(JsonWriter& writer, const ValueType& value) const { write(writer, value); }
     ValueType fromJson(JsonParser& parser) const { return read(parser); }
 };
 
-// makeJsonField has been moved below the converter definitions to ensure all converter
-// template types are declared before use. See implementation later in this file.
 
-// --- 基本的なコンバータ群（既存の value_io を利用する薄いラッパー）
+// ******************************************************************************** 基本型用変換方法
+
+// forward-declare accessor used by converters (defined after converters to avoid circular deps)
+export template <typename Elem>
+constexpr auto makeElementConverter();
+
+// ElementConverterType trait と HasElementConverter concept を前方宣言します。
+// これはコンバータの実装が完全化される前に参照するために必要です。
+export template <typename Elem>
+struct ElementConverterType; // full specializations defined later
+
+// 要素コンバータの存在を検出するヘルパ概念
+export template <typename Elem>
+concept HasElementConverter = requires { typename ElementConverterType<Elem>::type; };
 
 /// @brief 基本型等を扱うコンバータ（value_io に委譲）
 export template <typename T>
     requires (IsFundamentalValue<T> || std::same_as<T, std::string>)
 struct FundamentalConverter {
     using Value = T;
-    void write(JsonWriter& writer, const T& value) const { value_io::writeValue<T>(writer, value); }
-    T read(JsonParser& parser) const { return value_io::readValue<T>(parser); }
+    void write(JsonWriter& writer, const T& value) const { writer.writeObject(value); }
+    T read(JsonParser& parser) const {
+        T out{};
+        parser.readTo(out);
+        return out;
+    }
 };
 
 /// @brief jsonFields を持つ型のコンバータ
@@ -168,37 +167,145 @@ export template <typename T>
 struct WriteReadJsonConverter {
     using Value = T;
     void write(JsonWriter& writer, const T& obj) const { obj.writeJson(writer); }
-    T read(JsonParser& parser) const { T out{}; out.readJson(parser); return out; }
+    T read(JsonParser& parser) const {
+        T out{};
+        out.readJson(parser);
+        return out;
+    }
 };
 
-/// @brief unique_ptr 等のコンバータ
+
+// ******************************************************************************** variant用変換方法
+
+// forward-declare converters so converters (and makeElementConverter) can use them for recursive cases
 export template <typename T>
+    requires IsStdVariant<T>
+struct VariantConverter;
+
+// Variant
+// VariantConverter: std::variant のトークン派生 (token-dispatch) と read/write を実装します
+export template <typename T>
+    requires IsStdVariant<T>
+struct VariantConverter {
+    using Value = T;
+
+    void write(JsonWriter& writer, const T& v) const {
+        std::visit([&writer](const auto& inner) {
+            using Inner = std::remove_cvref_t<decltype(inner)>;
+            static const auto conv = makeElementConverter<Inner>();
+            conv.write(writer, inner);
+        }, v);
+    }
+
+    T read(JsonParser& parser) const {
+        using VariantType = T;
+        auto tokenType = parser.nextTokenType();
+        VariantType out{};
+        bool matched = false;
+
+        auto helper = [&](auto idx) {
+            if (matched) {
+                return;
+            }
+            constexpr std::size_t I = decltype(idx)::value;
+            using Alternative = std::variant_alternative_t<I, VariantType>;
+            using Decayed = std::remove_cvref_t<Alternative>;
+            bool ok = false;
+            switch (tokenType) {
+            case JsonTokenType::Null:
+                ok = IsUniquePtr<Decayed>;
+                break;
+            case JsonTokenType::Bool:
+                ok = std::is_same_v<Decayed, bool>;
+                break;
+            case JsonTokenType::Integer:
+                ok = std::is_integral_v<Decayed> && !std::is_same_v<Decayed, bool>;
+                break;
+            case JsonTokenType::Number:
+                ok = std::is_floating_point_v<Decayed>;
+                break;
+            case JsonTokenType::String:
+                ok = std::is_same_v<Decayed, std::string>;
+                break;
+            case JsonTokenType::StartObject:
+                ok = HasJsonFields<Decayed> || HasReadJson<Decayed> || IsUniquePtr<Decayed>;
+                break;
+            case JsonTokenType::StartArray:
+                ok = IsStdVector<Decayed>;
+                break;
+            default:
+                ok = false;
+                break;
+            }
+            if (ok) {
+                auto altConv = makeElementConverter<Alternative>();
+                out = VariantType(std::in_place_index<I>, altConv.read(parser));
+                matched = true;
+            }
+        };
+
+        auto dispatch = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+            (helper(std::integral_constant<std::size_t, Is>{}), ...);
+        };
+        dispatch(std::make_index_sequence<std::variant_size_v<VariantType>>{});
+
+        if (!matched) {
+            throw std::runtime_error("Failed to dispatch variant for current token");
+        }
+        return out;
+    }
+};
+
+
+// ******************************************************************************** unique_ptr用変換方法
+
+export template <typename T, typename ElementConverter = decltype(makeElementConverter<typename T::element_type>())>
+    requires IsUniquePtr<T>
+struct UniquePtrConverter;
+
+/// @brief unique_ptr 等のコンバータ
+export template <typename T, typename TargetConverter>
     requires IsUniquePtr<T>
 struct UniquePtrConverter {
     using Value = T;
     using Element = typename T::element_type;
-    void write(JsonWriter& writer, const T& ptr) const {
-        if (!ptr) { writer.null(); return; }
-        value_io::writeValue<Element>(writer, *ptr);
+    using ElemConvT = std::remove_cvref_t<TargetConverter>;
+
+    // デフォルト要素コンバータへの参照を返すユーティリティ（静的寿命）
+    static const ElemConvT& defaultTargetConverter() {
+        static const ElemConvT inst = makeElementConverter<Element>();
+        return inst;
     }
+
+    // デフォルトコンストラクタはデフォルト要素コンバータへの参照を初期化子リストで設定する
+    UniquePtrConverter() : targetConverter_(std::cref(defaultTargetConverter())) {}
+
+    // 明示的に要素コンバータ参照を指定するオーバーロード
+    constexpr explicit UniquePtrConverter(const ElemConvT& conv)
+    : targetConverter_(std::cref(conv)) {}
+
+    void write(JsonWriter& writer, const T& ptr) const {
+        if (!ptr) {
+            writer.null();
+            return;
+        }
+        targetConverter_.get().write(writer, *ptr);
+    }
+
     T read(JsonParser& parser) const {
         if (parser.nextIsNull()) {
             parser.skipValue();
             return nullptr;
         }
-        auto elem = value_io::readValue<Element>(parser);
+        auto elem = targetConverter_.get().read(parser);
         return std::make_unique<Element>(std::move(elem));
     }
+
+private:
+    std::reference_wrapper<const ElemConvT> targetConverter_;
 };
 
-/// @brief std::variant のコンバータ（value_io に委譲）
-export template <typename T>
-    requires IsStdVariant<T>
-struct VariantConverter {
-    using Value = T;
-    void write(JsonWriter& writer, const T& v) const { value_io::writeValue<T>(writer, v); }
-    T read(JsonParser& parser) const { return value_io::readValue<T>(parser); }
-};
+
 
 /// @brief コンテナ用コンバータ（要素コンバータ参照を持つ）。
 export template <typename Container, typename ElementConverter>
@@ -254,7 +361,7 @@ concept IsJsonEnumMap
         { m.toName(v) } -> std::same_as<std::optional<std::string_view>>;
     };
 
-/// EnumEntry holds a mapping from enum value to string name
+/// @brief EnumEntry は enum 値と文字列名の対応を保持します
 export template <typename EnumType>
 struct EnumEntry {
     EnumType value;   ///< Enum値。
@@ -286,52 +393,87 @@ struct JsonEnumMap {
 
     /// @brief 文字列から enum を得る。見つからない場合は nullopt。
     constexpr std::optional<Enum> fromName(std::string_view name) const {
-        if (auto p = nameToValue_.findValue(name)) return *p;
+        if (auto p = nameToValue_.findValue(name)) {
+            return *p;
+        }
         return std::nullopt;
     }
 
     /// @brief enum から文字列名を得る。見つからない場合は nullopt。
     constexpr std::optional<std::string_view> toName(Enum v) const {
-        if (auto p = valueToName_.findValue(v)) return *p;
+        if (auto p = valueToName_.findValue(v)) {
+            return *p;
+        }
         return std::nullopt;
     }
 
 private:
-    collection::SortedHashArrayMap<std::string_view, Enum, N> nameToValue_{}; ///< 名前からenum値へのマップ。
-    collection::SortedHashArrayMap<Enum, std::string_view, N> valueToName_{}; ///< enum値から名前へのマップ。
+    ///! 名前からenum値へのマップ。
+    collection::SortedHashArrayMap<std::string_view, Enum, N> nameToValue_{};
+    ///! enum値から名前へのマップ。
+    collection::SortedHashArrayMap<Enum, std::string_view, N> valueToName_{};
 };
 
-/// @brief 列挙型用のコンバータ（外部の EnumJsonMap を参照する）
+/// @brief 列挙型用のコンバータ
+/// @tparam MapType JsonEnumMap型など
 export template <typename MapType>
     requires IsJsonEnumMap<MapType>
 struct EnumConverter {
     using Enum = typename MapType::Enum;
     using Value = Enum;
-    constexpr explicit EnumConverter(MapType map) : map_(std::move(map)) {}
+    constexpr explicit EnumConverter(const MapType& map)
+        : map_(map) {}
+
     void write(JsonWriter& writer, const Enum& value) const {
-        if (auto name = map_.toName(value)) { writer.writeObject(*name); return; }
+        if (auto name = map_.toName(value)) {
+            writer.writeObject(*name);
+            return;
+        }
         throw std::runtime_error("Failed to convert enum to string");
     }
+
     Enum read(JsonParser& parser) const {
         std::string jsonValue;
         parser.readTo(jsonValue);
-        if (auto v = map_.fromName(jsonValue)) return *v;
+        if (auto v = map_.fromName(jsonValue)) {
+            return *v;
+        }
         throw std::runtime_error(std::string("Failed to convert string to enum: ") + jsonValue);
     }
 private:
     MapType map_{};
 };
 
+export template <typename Enum, std::size_t N>
+constexpr auto makeJsonEnumMap(const EnumEntry<Enum> (&entries)[N]) {
+    return JsonEnumMap<Enum, N>(entries);
+}
+
+export template <typename MemberPtrType, typename MapType>
+constexpr auto makeJsonEnumField(MemberPtrType memberPtr, const char* keyName,
+    const MapType& map, bool req = false)
+    requires IsJsonEnumMap<MapType>
+        && std::same_as<typename MapType::Enum, MemberPointerValueType<MemberPtrType>> {
+    static const EnumConverter<MapType> conv(map);
+    return JsonField<MemberPtrType, EnumConverter<MapType>>(
+        memberPtr, keyName, std::cref(conv), req);
+}
+
+// 外部で管理される EnumConverter を使って JsonField を作成します（コンバータはフィールドより長く存続する必要があります）
+export template <typename MemberPtrType, typename MapType>
+constexpr auto makeJsonEnumFieldConverter(MemberPtrType memberPtr, const char* keyName,
+    const EnumConverter<MapType>& conv, bool req = false)
+    requires IsJsonEnumMap<MapType>
+        && std::same_as<typename MapType::Enum, MemberPointerValueType<MemberPtrType>> {
+    return JsonField<MemberPtrType, EnumConverter<MapType>>(
+        memberPtr, keyName, std::cref(conv), req);
+}
+
+
+// ******************************************************************************** 変換方法取得
 // --- 補助ファクトリ (JsonField 用 - 名前衝突を避けるためリネーム)
 
-
-
-// Element converter selection trait for containers
-export template <typename Elem>
-struct ElementConverterType {
-    static_assert(AlwaysFalse<Elem>, "No element converter available for this element type; provide an explicit converter or specialize ElementConverterType");
-};
-
+// Full ElementConverterType specializations (defined after all Converter types so they can reference them)
 export template <typename Elem>
 requires (IsFundamentalValue<Elem> || std::same_as<Elem, std::string>)
 struct ElementConverterType<Elem> { using type = FundamentalConverter<Elem>; };
@@ -349,18 +491,52 @@ requires IsUniquePtr<Elem>
 struct ElementConverterType<Elem> { using type = UniquePtrConverter<Elem>; };
 
 export template <typename Elem>
-requires IsStdVariant<Elem>
+requires rai::json::IsStdVariant<Elem>
 struct ElementConverterType<Elem> { using type = VariantConverter<Elem>; };
+
+export template <typename Elem>
+requires IsContainer<Elem> && HasElementConverter<std::remove_cvref_t<std::ranges::range_value_t<Elem>>>
+struct ElementConverterType<Elem> { using type = ContainerConverter<Elem, typename ElementConverterType<std::remove_cvref_t<std::ranges::range_value_t<Elem>>>::type>; };
 
 export template <typename Elem>
 requires IsSmartOrRawPointer<Elem>
 struct ElementConverterType<Elem> { static_assert(AlwaysFalse<Elem>, "Container element is pointer/polymorphic; use makeJsonPolymorphicArrayField or provide explicit element converter"); };
 
-// Helper concept to detect available ElementConverter
-export template <typename Elem>
-concept HasElementConverter = requires { typename ElementConverterType<Elem>::type; };
 
-// Helper: construct a converter for a given MemberPtrType's value type
+
+// Implement makeElementConverter after converters to resolve circular dependencies
+
+
+// ヘルパ: 要素型のコンバータインスタンスを構築します（ネストしたコンテナや variant を再帰的に処理）
+export template <typename Elem>
+constexpr auto makeElementConverter() {
+    if constexpr (IsFundamentalValue<Elem> || std::same_as<Elem, std::string>) {
+        return FundamentalConverter<Elem>{};
+    }
+    else if constexpr (HasJsonFields<Elem>) {
+        return JsonFieldsConverter<Elem>{};
+    }
+    else if constexpr (HasReadJson<Elem> && HasWriteJson<Elem>) {
+        return WriteReadJsonConverter<Elem>{};
+    }
+    else if constexpr (IsUniquePtr<Elem>) {
+        return UniquePtrConverter<Elem>{};
+    }
+    else if constexpr (IsStdVariant<Elem>) {
+        return VariantConverter<Elem>{};
+    }
+    else if constexpr (IsContainer<Elem>) {
+        using Inner = std::remove_cvref_t<std::ranges::range_value_t<Elem>>;
+        auto innerConv = makeElementConverter<Inner>();
+        using ElemConvType = typename ElementConverterType<Elem>::type; // ここでは ContainerConverter<Elem, InnerConvType> のはずです
+        return ElemConvType(innerConv);
+    }
+    else {
+        static_assert(AlwaysFalse<Elem>, "makeElementConverter: unsupported element type");
+    }
+} 
+
+// ヘルパ: 与えられた MemberPtrType の値型に対するコンバータを構築します
 export template <typename MemberPtrType>
 constexpr auto makeConverter(MemberPtrType /*memberPtr*/, const char* /*keyName*/) {
     using ValueT = MemberPointerValueType<MemberPtrType>;
@@ -390,9 +566,10 @@ constexpr auto makeConverter(MemberPtrType /*memberPtr*/, const char* /*keyName*
         using Elem = std::remove_cvref_t<std::ranges::range_value_t<Container>>;
 
         if constexpr (HasElementConverter<Elem>) {
-            using ElemConv = typename ElementConverterType<Elem>::type;
-            static const ElemConv econv{};
-            static const ContainerConverter<Container, ElemConv> conv(econv);
+            // 要素コンバータのインスタンスを構築（入れ子のコンテナを再帰的に処理）
+            static const auto elemConvInstance = makeElementConverter<Elem>();
+            using ElemConv = std::remove_cvref_t<decltype(elemConvInstance)>;
+            static const ContainerConverter<Container, ElemConv> conv(elemConvInstance);
             return std::cref(conv);
         }
         else if constexpr (IsSmartOrRawPointer<Elem>) {
@@ -407,46 +584,14 @@ constexpr auto makeConverter(MemberPtrType /*memberPtr*/, const char* /*keyName*
     }
 }
 
-// Single makeJsonField that selects an appropriate converter via helper
+// 単一の makeJsonField: ヘルパを介して適切なコンバータを選択します
 export template <typename MemberPtrType>
 constexpr auto makeJsonField(MemberPtrType memberPtr, const char* keyName, bool req = false) {
-    // Obtain a reference to an appropriate converter instance for this MemberPtrType
+    // この MemberPtrType に対する適切なコンバータインスタンスへの参照を取得します
     auto convRef = makeConverter<MemberPtrType>(memberPtr, keyName);
     using ConvT = std::remove_cvref_t<decltype(convRef.get())>;
     return JsonField<MemberPtrType, ConvT>(memberPtr, keyName, convRef, req);
 }
-
-
-
-
-// ******************************************************************************** enum用
-
-
-
-// end element converter selection (moved earlier)
-
-export template <typename MemberPtrType, typename MapType>
-constexpr auto makeJsonEnumField(MemberPtrType memberPtr, const char* keyName,
-    const MapType& map, bool req = false) requires IsJsonEnumMap<MapType> && std::same_as<typename MapType::Enum, MemberPointerValueType<MemberPtrType>> {
-    static const EnumConverter<MapType> conv(map);
-    return JsonField<MemberPtrType, EnumConverter<MapType>>(memberPtr, keyName, std::cref(conv), req);
-}
-
-// Create a JsonField using an externally-managed EnumConverter (converter must outlive field)
-export template <typename MemberPtrType, typename MapType>
-constexpr auto makeJsonEnumFieldConverter(MemberPtrType memberPtr, const char* keyName,
-    const EnumConverter<MapType>& conv, bool req = false) requires IsJsonEnumMap<MapType> && std::same_as<typename MapType::Enum, MemberPointerValueType<MemberPtrType>> {
-    return JsonField<MemberPtrType, EnumConverter<MapType>>(memberPtr, keyName, std::cref(conv), req);
-}
-
-
-
-// ******************************************************************************** コンテナ用
-export template <typename Enum, std::size_t N>
-constexpr auto makeJsonEnumMap(const EnumEntry<Enum> (&entries)[N]) {
-    return JsonEnumMap<Enum, N>(entries);
-}
-
 
 
 // ******************************************************************************** コンテナ用
@@ -459,6 +604,18 @@ constexpr auto makeJsonEnumMap(const EnumEntry<Enum> (&entries)[N]) {
 export template <typename MemberPtrType>
 constexpr auto makeJsonContainerField(MemberPtrType memberPtr, const char* keyName, bool req = false) {
     return makeJsonField(memberPtr, keyName, req);
+}
+
+// Overload: accept an explicit ContainerConverter instance to avoid copying element converters.
+export template <typename MemberPtrType, typename Container, typename ElemConv>
+    requires std::is_member_object_pointer_v<MemberPtrType>
+        && std::same_as<MemberPointerValueType<MemberPtrType>, Container>
+        && IsContainer<Container>
+        && IsJsonConverter<ElemConv, std::remove_cvref_t<std::ranges::range_value_t<Container>>>
+constexpr auto makeJsonContainerField(MemberPtrType memberPtr, const char* keyName,
+    const ContainerConverter<Container, ElemConv>& conv, bool req = false) {
+    return JsonField<MemberPtrType, ContainerConverter<Container, ElemConv>>(
+        memberPtr, keyName, std::cref(conv), req);
 }
 
 
@@ -485,14 +642,16 @@ struct TokenDispatchConverter {
     explicit TokenDispatchConverter(const std::array<FromJsonEntry<ValueType>, FromN>& fromEntries,
         ToConverter toConverter = defaultToConverter())
         : toConverter_(std::move(toConverter)) {
-        static_assert(FromN <= JsonTokenTypeCount);
-        for (std::size_t i = 0; i < JsonTokenTypeCount; ++i) {
+        static_assert(FromN <= 12);
+        for (std::size_t i = 0; i < 12; ++i) {
             fromEntries_[i] = [](JsonParser&) -> ValueType {
                 throw std::runtime_error("No converter found for token type");
             };
         }
         for (std::size_t i = 0; i < FromN; ++i) {
-            if (fromEntries[i]) fromEntries_[i] = fromEntries[i];
+            if (fromEntries[i]) {
+                fromEntries_[i] = fromEntries[i];
+            }
         }
     }
 
@@ -512,33 +671,33 @@ struct TokenDispatchConverter {
     }
 
 private:
-    std::array<std::function<ValueType(JsonParser&)>, JsonTokenTypeCount> fromEntries_{};
+    std::array<std::function<ValueType(JsonParser&)>, 12> fromEntries_{};
     ToConverter toConverter_{};
 };
 // --- TokenDispatchConverter（JsonTokenTypeCount の後に定義する）
 
 /// @brief 補助ファクトリ（TokenDispatchはFromJsonEntryが必要なのでここに置く）
-// Create a JsonField using an externally-managed TokenDispatchConverter (converter must outlive field)
+// 外部で管理される TokenDispatchConverter を使って JsonField を作成します（コンバータはフィールドより長く存続する必要があります）
 export template <typename MemberPtrType, typename ValueType>
 constexpr auto makeJsonTokenDispatchField(MemberPtrType memberPtr, const char* keyName,
     const TokenDispatchConverter<ValueType>& conv, bool req = false) requires std::same_as<ValueType, MemberPointerValueType<MemberPtrType>> {
     return JsonField<MemberPtrType, TokenDispatchConverter<ValueType>>(memberPtr, keyName, std::cref(conv), req);
 }
 
-// Convenience overload: construct a TokenDispatch JsonField from an array of FromJsonEntry
+// 便宜上のオーバーロード: FromJsonEntry の配列から TokenDispatch 用の JsonField を構築します
 export template <typename MemberPtrType, typename ValueType, std::size_t FromN>
 constexpr auto makeJsonTokenDispatchField(MemberPtrType memberPtr, const char* keyName,
     const std::array<FromJsonEntry<ValueType>, FromN>& fromEntries,
     typename TokenDispatchConverter<ValueType>::ToConverter toConverter = TokenDispatchConverter<ValueType>::defaultToConverter(),
     bool req = false) requires std::same_as<ValueType, MemberPointerValueType<MemberPtrType>> {
-    static_assert(FromN <= JsonTokenTypeCount);
-    // Note: conv references static data built from 'fromEntries', must outlive returned JsonField
+    static_assert(FromN <= 12);
+    // 補足: conv は 'fromEntries' から構築した静的データを参照するため、返される JsonField より長い寿命を持つ必要があります
     static const TokenDispatchConverter<ValueType> conv(fromEntries, toConverter);
     return JsonField<MemberPtrType, TokenDispatchConverter<ValueType>>(memberPtr, keyName, std::cref(conv), req);
 }
 
-// JsonTokenDispatchField has been removed. Use the factory helpers
-// makeJsonTokenDispatchField(...) which construct a suitable TokenDispatchConverter
-// and return a JsonField referencing it (static lifetime for convenience).
+// JsonTokenDispatchField は削除されました。代わりにファクトリヘルパ
+// makeJsonTokenDispatchField(...) を使用してください。これは適切な TokenDispatchConverter
+// を構築し、それを参照する JsonField を返します（利便性のために静的な寿命を利用）。
 
 }  // namespace rai::json

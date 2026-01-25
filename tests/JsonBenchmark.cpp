@@ -572,7 +572,7 @@ TEST(JsonBenchmark, SmallDataFileIO) {
     std::cout << "\n=== Small Data File I/O Benchmark ===\n";
     std::cout << "File size: " << jsonData.size() << " bytes, ";
     std::cout << "Iterations: " << iterations << "\n";
-    // Note: Each iteration uses a different file to avoid cache effects
+    // 注: 各イテレーションでは異なるファイルを使用してキャッシュの影響を避けます
     runFileIOBenchmark(jsonData, "benchmark_small_", iterations, 3);
 }
 
@@ -584,6 +584,6 @@ TEST(JsonBenchmark, MediumDataFileIO) {
     std::cout << "\n=== Medium Data File I/O Benchmark ===\n";
     std::cout << "File size: " << jsonData.size() << " bytes, ";
     std::cout << "Iterations: " << iterations << "\n";
-    // Note: Each iteration uses a different file to avoid cache effects
+    // 注: 各イテレーションでは異なるファイルを使用してキャッシュの影響を避けます
     runFileIOBenchmark(jsonData, "benchmark_medium_", iterations, 2);
 }
