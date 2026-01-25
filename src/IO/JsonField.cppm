@@ -157,9 +157,6 @@ struct WriteReadJsonConverter {
     }
 };
 
-
-// ******************************************************************************** variant用変換方法
-
 // Fallback: exclude complex types and provide clear diagnostics
 export template <typename T>
 constexpr auto& getConverter() {
@@ -193,219 +190,16 @@ constexpr auto& getConverter() {
     }
 }
 
-export template <typename T>
-    requires IsStdVariant<T>
-struct VariantConverter;
-
-// Variant
-// VariantConverter: std::variant のトークン派生 (token-dispatch) と read/write を実装します
-export template <typename T>
-    requires IsStdVariant<T>
-struct VariantConverter {
-    using Value = T;
-
-    void write(JsonWriter& writer, const T& v) const {
-        std::visit([&writer](const auto& inner) {
-            using Inner = std::remove_cvref_t<decltype(inner)>;
-            static const auto& conv = getConverter<Inner>();
-            conv.write(writer, inner);
-        }, v);
-    }
-
-    T read(JsonParser& parser) const {
-        using VariantType = T;
-        auto tokenType = parser.nextTokenType();
-        VariantType out{};
-        bool matched = false;
-
-        auto helper = [&](auto idx) {
-            if (matched) {
-                return;
-            }
-            constexpr std::size_t I = decltype(idx)::value;
-            using Alternative = std::variant_alternative_t<I, VariantType>;
-            using Decayed = std::remove_cvref_t<Alternative>;
-            bool ok = false;
-            switch (tokenType) {
-            case JsonTokenType::Null:
-                ok = IsUniquePtr<Decayed>;
-                break;
-            case JsonTokenType::Bool:
-                ok = std::is_same_v<Decayed, bool>;
-                break;
-            case JsonTokenType::Integer:
-                ok = std::is_integral_v<Decayed> && !std::is_same_v<Decayed, bool>;
-                break;
-            case JsonTokenType::Number:
-                ok = std::is_floating_point_v<Decayed>;
-                break;
-            case JsonTokenType::String:
-                ok = std::is_same_v<Decayed, std::string>;
-                break;
-            case JsonTokenType::StartObject:
-                ok = HasJsonFields<Decayed> || HasReadJson<Decayed> || IsUniquePtr<Decayed>;
-                break;
-            case JsonTokenType::StartArray:
-                ok = IsStdVector<Decayed>;
-                break;
-            default:
-                ok = false;
-                break;
-            }
-            if (ok) {
-                const auto& altConv = getConverter<Alternative>();
-                out = VariantType(std::in_place_index<I>, altConv.read(parser));
-                matched = true;
-            }
-        };
-
-        auto dispatch = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-            (helper(std::integral_constant<std::size_t, Is>{}), ...);
-        };
-        dispatch(std::make_index_sequence<std::variant_size_v<VariantType>>{});
-
-        if (!matched) {
-            throw std::runtime_error("Failed to dispatch variant for current token");
-        }
-        return out;
-    }
-};
-
-
-// ******************************************************************************** unique_ptr用変換方法
-
-/// @brief unique_ptr 等のコンバータ
-export template <typename T, typename TargetConverter>
-    requires IsUniquePtr<T>
-struct UniquePtrConverter {
-    using Value = T;
-    using Element = typename T::element_type;
-    using ElemConvT = std::remove_cvref_t<TargetConverter>;
-
-    // デフォルト要素コンバータへの参照を返すユーティリティ（静的寿命）
-    static const ElemConvT& defaultTargetConverter() {
-        static const ElemConvT& inst = getConverter<Element>();
-        return inst;
-    }
-
-    // デフォルトコンストラクタはデフォルト要素コンバータへの参照を初期化子リストで設定する
-    UniquePtrConverter()
-        : targetConverter_(std::cref(defaultTargetConverter())) {}
-
-    // 明示的に要素コンバータ参照を指定するオーバーロード
-    constexpr explicit UniquePtrConverter(const ElemConvT& conv)
-        : targetConverter_(std::cref(conv)) {}
-
-    void write(JsonWriter& writer, const T& ptr) const {
-        if (!ptr) {
-            writer.null();
-            return;
-        }
-        targetConverter_.get().write(writer, *ptr);
-    }
-
-    T read(JsonParser& parser) const {
-        if (parser.nextIsNull()) {
-            parser.skipValue();
-            return nullptr;
-        }
-        auto elem = targetConverter_.get().read(parser);
-        return std::make_unique<Element>(std::move(elem));
-    }
-
-private:
-    std::reference_wrapper<const ElemConvT> targetConverter_;
-};
-
-/// @brief unique_ptr<T>のjson変換方法を返す。
-export template <typename T>
-    requires IsUniquePtr<T>
-constexpr auto& getUniquePtrConverter() {
-    using TargetConverter = decltype(getConverter<typename T::element_type>());
-    static const UniquePtrConverter<T, TargetConverter> inst{};
-    return inst;
-}
-
+/// @brief 与えられた MemberPtrType の値型（以下）に対するコンバータを構築します
+///        基本型、HasJsonFields、HasReadJson/HasWriteJson
 export template <typename MemberPtrType>
-constexpr auto makeJsonUniquePtrField(
-    MemberPtrType memberPtr, const char* keyName, bool req = false)
-    requires std::is_member_object_pointer_v<MemberPtrType>
-        && IsUniquePtr<MemberPointerValueType<MemberPtrType>> {
-    using Ptr = MemberPointerValueType<MemberPtrType>;
-    auto& converter = getUniquePtrConverter<Ptr>();
-    return JsonField<MemberPtrType, std::remove_cvref_t<decltype(converter)>>(
-        memberPtr, keyName, std::cref(converter), req);
-}
+constexpr auto makeJsonField(MemberPtrType memberPtr, const char* keyName, bool req = false) {
+    using ValueT = MemberPointerValueType<MemberPtrType>;
+    const auto& conv = getConverter<ValueT>();
+    using ConvT = std::remove_cvref_t<decltype(conv)>;
+    return JsonField<MemberPtrType, ConvT>(memberPtr, keyName, std::cref(conv), req);
+}  
 
-export template <typename MemberPtrType, typename PtrConv>
-    requires std::is_member_object_pointer_v<MemberPtrType>
-        && IsUniquePtr<MemberPointerValueType<MemberPtrType>>
-constexpr auto makeJsonUniquePtrField(
-    MemberPtrType memberPtr, const char* keyName, const PtrConv& conv, bool req = false) {
-    return JsonField<MemberPtrType, std::remove_cvref_t<PtrConv>>(
-        memberPtr, keyName, std::cref(conv), req);
-}
-
-// ******************************************************************************** コンテナ用変換方法
-
-/// @brief コンテナ用コンバータ（要素コンバータ参照を持つ）。
-export template <typename Container, typename ElementConverter>
-    requires IsContainer<Container>
-        && IsJsonConverter<ElementConverter,
-            std::remove_cvref_t<std::ranges::range_value_t<Container>>>
-struct ContainerConverter {
-    using Value = Container;
-    using Element = std::remove_cvref_t<std::ranges::range_value_t<Container>>;
-    using ElementConverterT = std::remove_cvref_t<ElementConverter>;
-    static_assert(std::is_same_v<typename ElementConverterT::Value, Element>,
-        "ElementConverter::Value must match container element type");
-
-    static const ElementConverterT& defaultElementConverter() {
-        static const ElementConverterT inst{};
-        return inst;
-    }
-
-    constexpr ContainerConverter()
-        : elemConvRef_(std::cref(defaultElementConverter())) {}
-
-    constexpr explicit ContainerConverter(const ElementConverter& elemConv)
-        : elemConvRef_(std::cref(elemConv)) {}
-
-    void write(JsonWriter& writer, const Container& range) const {
-        writer.startArray();
-        for (const auto& e : range) {
-            elemConvRef_.get().write(writer, e);
-        }
-        writer.endArray();
-    }
-
-    Container read(JsonParser& parser) const {
-        Container out{};
-        parser.startArray();
-        while (!parser.nextIsEndArray()) {
-            auto elem = elemConvRef_.get().read(parser);
-            if constexpr (requires(Container& c, Element&& v) {
-                    c.push_back(std::declval<Element>());
-                }) {
-                out.push_back(std::move(elem));
-            }
-            else if constexpr (requires(Container& c, Element&& v) {
-                    c.insert(std::declval<Element>());
-                }) {
-                out.insert(std::move(elem));
-            }
-            else {
-                static_assert(false,
-                    "ContainerConverter: container must support push_back or insert");
-            }
-        }
-        parser.endArray();
-        return out;
-    }
-
-private:
-    std::reference_wrapper<const ElementConverterT> elemConvRef_{};
-};
 
 // ******************************************************************************** enum用返還方法
 
@@ -519,7 +313,7 @@ constexpr auto makeJsonEnumField(MemberPtrType memberPtr, const char* keyName,
 
 // 外部で管理される EnumConverter を使って JsonField を作成します（コンバータはフィールドより長く存続する必要があります）
 export template <typename MemberPtrType, typename MapType>
-constexpr auto makeJsonEnumFieldConverter(MemberPtrType memberPtr, const char* keyName,
+constexpr auto makeJsonEnumField(MemberPtrType memberPtr, const char* keyName,
     const EnumConverter<MapType>& conv, bool req = false)
     requires IsJsonEnumMap<MapType>
         && std::same_as<typename MapType::Enum, MemberPointerValueType<MemberPtrType>> {
@@ -528,23 +322,66 @@ constexpr auto makeJsonEnumFieldConverter(MemberPtrType memberPtr, const char* k
 }
 
 
-// ******************************************************************************** 変換方法取得
-// --- 補助ファクトリ (JsonField 用 - 名前衝突を避けるためリネーム)
+// ******************************************************************************** コンテナ用変換方法
 
-// ヘルパ: 与えられた MemberPtrType の値型に対するコンバータを構築します
-// 注意: このファクトリは基本的な値型や HasJsonFields/HasReadJson の場合のみ自動的にコンバータを提供します。
-//       unique_ptr、variant、コンテナなど複雑なケースはここでは対象外とし、明示的なコンバータを要求します。
-export template <typename MemberPtrType>
-constexpr auto makeJsonField(MemberPtrType memberPtr, const char* keyName, bool req = false) {
-    using ValueT = MemberPointerValueType<MemberPtrType>;
-    const auto& conv = getConverter<ValueT>();
-    using ConvT = std::remove_cvref_t<decltype(conv)>;
-    return JsonField<MemberPtrType, ConvT>(memberPtr, keyName, std::cref(conv), req);
-}  
+/// @brief コンテナ用コンバータ（要素コンバータ参照を持つ）。
+export template <typename Container, typename ElementConverter>
+    requires IsContainer<Container>
+        && IsJsonConverter<ElementConverter,
+            std::remove_cvref_t<std::ranges::range_value_t<Container>>>
+struct ContainerConverter {
+    using Value = Container;
+    using Element = std::remove_cvref_t<std::ranges::range_value_t<Container>>;
+    using ElementConverterT = std::remove_cvref_t<ElementConverter>;
+    static_assert(std::is_same_v<typename ElementConverterT::Value, Element>,
+        "ElementConverter::Value must match container element type");
 
+    static const ElementConverterT& defaultElementConverter() {
+        static const ElementConverterT inst{};
+        return inst;
+    }
 
+    constexpr ContainerConverter()
+        : elemConvRef_(std::cref(defaultElementConverter())) {}
 
-// ******************************************************************************** コンテナ用
+    constexpr explicit ContainerConverter(const ElementConverter& elemConv)
+        : elemConvRef_(std::cref(elemConv)) {}
+
+    void write(JsonWriter& writer, const Container& range) const {
+        writer.startArray();
+        for (const auto& e : range) {
+            elemConvRef_.get().write(writer, e);
+        }
+        writer.endArray();
+    }
+
+    Container read(JsonParser& parser) const {
+        Container out{};
+        parser.startArray();
+        while (!parser.nextIsEndArray()) {
+            auto elem = elemConvRef_.get().read(parser);
+            if constexpr (requires(Container& c, Element&& v) {
+                    c.push_back(std::declval<Element>());
+                }) {
+                out.push_back(std::move(elem));
+            }
+            else if constexpr (requires(Container& c, Element&& v) {
+                    c.insert(std::declval<Element>());
+                }) {
+                out.insert(std::move(elem));
+            }
+            else {
+                static_assert(false,
+                    "ContainerConverter: container must support push_back or insert");
+            }
+        }
+        parser.endArray();
+        return out;
+    }
+
+private:
+    std::reference_wrapper<const ElementConverterT> elemConvRef_{};
+};
 
 /// @brief 配列形式のJSONを読み書きする汎用フィールド。
 /// @tparam MemberPtrType コンテナ型のメンバー変数へのポインタ。
@@ -573,6 +410,162 @@ constexpr auto makeJsonContainerField(MemberPtrType memberPtr, const char* keyNa
         memberPtr, keyName, std::cref(conv), req);
 }
 
+
+// ******************************************************************************** unique_ptr用変換方法
+
+/// @brief unique_ptr 等のコンバータ
+export template <typename T, typename TargetConverter>
+    requires IsUniquePtr<T>
+struct UniquePtrConverter {
+    using Value = T;
+    using Element = typename T::element_type;
+    using ElemConvT = std::remove_cvref_t<TargetConverter>;
+
+    // デフォルト要素コンバータへの参照を返すユーティリティ（静的寿命）
+    static const ElemConvT& defaultTargetConverter() {
+        static const ElemConvT& inst = getConverter<Element>();
+        return inst;
+    }
+
+    // デフォルトコンストラクタはデフォルト要素コンバータへの参照を初期化子リストで設定する
+    UniquePtrConverter()
+        : targetConverter_(std::cref(defaultTargetConverter())) {}
+
+    // 明示的に要素コンバータ参照を指定するオーバーロード
+    constexpr explicit UniquePtrConverter(const ElemConvT& conv)
+        : targetConverter_(std::cref(conv)) {}
+
+    void write(JsonWriter& writer, const T& ptr) const {
+        if (!ptr) {
+            writer.null();
+            return;
+        }
+        targetConverter_.get().write(writer, *ptr);
+    }
+
+    T read(JsonParser& parser) const {
+        if (parser.nextIsNull()) {
+            parser.skipValue();
+            return nullptr;
+        }
+        auto elem = targetConverter_.get().read(parser);
+        return std::make_unique<Element>(std::move(elem));
+    }
+
+private:
+    std::reference_wrapper<const ElemConvT> targetConverter_;
+};
+
+/// @brief unique_ptr<T>のjson変換方法を返す。
+export template <typename T>
+    requires IsUniquePtr<T>
+constexpr auto& getUniquePtrConverter() {
+    using TargetConverter = decltype(getConverter<typename T::element_type>());
+    static const UniquePtrConverter<T, TargetConverter> inst{};
+    return inst;
+}
+
+export template <typename MemberPtrType>
+constexpr auto makeJsonUniquePtrField(
+    MemberPtrType memberPtr, const char* keyName, bool req = false)
+    requires std::is_member_object_pointer_v<MemberPtrType>
+        && IsUniquePtr<MemberPointerValueType<MemberPtrType>> {
+    using Ptr = MemberPointerValueType<MemberPtrType>;
+    auto& converter = getUniquePtrConverter<Ptr>();
+    return JsonField<MemberPtrType, std::remove_cvref_t<decltype(converter)>>(
+        memberPtr, keyName, std::cref(converter), req);
+}
+
+export template <typename MemberPtrType, typename PtrConv>
+    requires std::is_member_object_pointer_v<MemberPtrType>
+        && IsUniquePtr<MemberPointerValueType<MemberPtrType>>
+constexpr auto makeJsonUniquePtrField(
+    MemberPtrType memberPtr, const char* keyName, const PtrConv& conv, bool req = false) {
+    return JsonField<MemberPtrType, std::remove_cvref_t<PtrConv>>(
+        memberPtr, keyName, std::cref(conv), req);
+}
+
+
+// ******************************************************************************** variant用変換方法
+
+export template <typename T>
+    requires IsStdVariant<T>
+struct VariantConverter;
+
+// Variant
+// VariantConverter: std::variant のトークン派生 (token-dispatch) と read/write を実装します
+export template <typename T>
+    requires IsStdVariant<T>
+struct VariantConverter {
+    using Value = T;
+
+    void write(JsonWriter& writer, const T& v) const {
+        std::visit([&writer](const auto& inner) {
+            using Inner = std::remove_cvref_t<decltype(inner)>;
+            static const auto& conv = getConverter<Inner>();
+            conv.write(writer, inner);
+        }, v);
+    }
+
+    T read(JsonParser& parser) const {
+        using VariantType = T;
+        auto tokenType = parser.nextTokenType();
+        VariantType out{};
+        bool matched = false;
+
+        auto helper = [&](auto idx) {
+            if (matched) {
+                return;
+            }
+            constexpr std::size_t I = decltype(idx)::value;
+            using Alternative = std::variant_alternative_t<I, VariantType>;
+            using Decayed = std::remove_cvref_t<Alternative>;
+            bool ok = false;
+            switch (tokenType) {
+            case JsonTokenType::Null:
+                ok = IsUniquePtr<Decayed>;
+                break;
+            case JsonTokenType::Bool:
+                ok = std::is_same_v<Decayed, bool>;
+                break;
+            case JsonTokenType::Integer:
+                ok = std::is_integral_v<Decayed> && !std::is_same_v<Decayed, bool>;
+                break;
+            case JsonTokenType::Number:
+                ok = std::is_floating_point_v<Decayed>;
+                break;
+            case JsonTokenType::String:
+                ok = std::is_same_v<Decayed, std::string>;
+                break;
+            case JsonTokenType::StartObject:
+                ok = HasJsonFields<Decayed> || HasReadJson<Decayed> || IsUniquePtr<Decayed>;
+                break;
+            case JsonTokenType::StartArray:
+                ok = IsStdVector<Decayed>;
+                break;
+            default:
+                ok = false;
+                break;
+            }
+            if (ok) {
+                const auto& altConv = getConverter<Alternative>();
+                out = VariantType(std::in_place_index<I>, altConv.read(parser));
+                matched = true;
+            }
+        };
+
+        auto dispatch = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+            (helper(std::integral_constant<std::size_t, Is>{}), ...);
+        };
+        dispatch(std::make_index_sequence<std::variant_size_v<VariantType>>{});
+
+        if (!matched) {
+            throw std::runtime_error("Failed to dispatch variant for current token");
+        }
+        return out;
+    }
+};
+
 // Helpers for variant members (default uses VariantConverter)
 export template <typename MemberPtrType>
 constexpr auto makeJsonVariantField(MemberPtrType memberPtr, const char* keyName, bool req = false)
@@ -581,7 +574,6 @@ constexpr auto makeJsonVariantField(MemberPtrType memberPtr, const char* keyName
     static const VariantConverter<Var> conv{};
     return JsonField<MemberPtrType, VariantConverter<Var>>(memberPtr, keyName, std::cref(conv), req);
 }
-
 
 
 // ******************************************************************************** トークン種別毎の分岐用
@@ -659,9 +651,5 @@ constexpr auto makeJsonTokenDispatchField(MemberPtrType memberPtr, const char* k
     static const TokenDispatchConverter<ValueType> conv(fromEntries, toConverter);
     return JsonField<MemberPtrType, TokenDispatchConverter<ValueType>>(memberPtr, keyName, std::cref(conv), req);
 }
-
-// JsonTokenDispatchField は削除されました。代わりにファクトリヘルパ
-// makeJsonTokenDispatchField(...) を使用してください。これは適切な TokenDispatchConverter
-// を構築し、それを参照する JsonField を返します（利便性のために静的な寿命を利用）。
 
 }  // namespace rai::json
