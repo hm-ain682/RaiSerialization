@@ -93,8 +93,7 @@ concept IsJsonFieldOmittedBehavior = requires(
 /// @brief JsonFieldの省略時挙動の既定実装。
 /// @tparam ValueType 値型
 export template <typename ValueType>
-struct JsonFieldDefaultOmittedBehavior {
-    bool required{false};                      ///< 必須かどうか
+struct DefaultFieldOmitBehavior {
     mutable std::optional<ValueType> defaultValue{};   ///< 既定値（任意）
     std::optional<ValueType> skipWhenEqual{};  ///< この値と等しい場合は書き出し省略（任意）
 
@@ -112,16 +111,34 @@ struct JsonFieldDefaultOmittedBehavior {
     /// @param outValue 欠落時に代入する対象
     /// @param key 対象キー名
     void applyMissing(ValueType& outValue, std::string_view key) const {
-        if (required) {
-            throw std::runtime_error(
-                std::string("JsonParser: missing required key '") +
-                std::string(key) + "'");
-        }
         if (defaultValue) {
             // ムーブ専用型の既定値は一度だけ使用可能なため、消費後に無効化する
             outValue = std::move(*defaultValue);
             defaultValue.reset();
         }
+    }
+};
+
+/// @brief JsonFieldの必須時挙動の実装。
+/// @tparam ValueType 値型
+export template <typename ValueType>
+struct RequiredFieldOmitBehavior {
+    /// @brief 値が省略条件に一致するかを返す。
+    /// @param value チェックする値
+    /// @return 省略すべきなら true
+    bool shouldSkipWrite(const ValueType& value) const {
+        (void)value;
+        return false;
+    }
+
+    /// @brief 欠落時の挙動を適用する。
+    /// @param outValue 欠落時に代入する対象
+    /// @param key 対象キー名
+    void applyMissing(ValueType& outValue, std::string_view key) const {
+        (void)outValue;
+        throw std::runtime_error(
+            std::string("JsonParser: missing required key '") +
+            std::string(key) + "'");
     }
 };
 
@@ -131,7 +148,7 @@ struct JsonFieldDefaultOmittedBehavior {
 export template <
     typename MemberPtrType,
     typename Converter,
-    typename OmittedBehavior = JsonFieldDefaultOmittedBehavior<
+    typename OmittedBehavior = DefaultFieldOmitBehavior<
         MemberPointerValueType<MemberPtrType>>>
 struct JsonField {
     static_assert(std::is_member_object_pointer_v<MemberPtrType>,
@@ -152,7 +169,7 @@ struct JsonField {
     /// @note 既定の省略時挙動を使用します。
     constexpr explicit JsonField(MemberPtrType memberPtr, const char* keyName,
         std::reference_wrapper<const Converter> conv, bool req = false)
-        requires std::same_as<OmittedBehavior, JsonFieldDefaultOmittedBehavior<ValueType>>
+        requires std::same_as<OmittedBehavior, DefaultFieldOmitBehavior<ValueType>>
         : member(memberPtr), converterRef(conv), key(keyName),
           omittedBehavior(makeDefaultBehavior(req)) {}
 
@@ -166,7 +183,7 @@ struct JsonField {
         const Converter& conv, bool req = false)
         : member(memberPtr), converterRef(std::cref(conv)), key(keyName),
           omittedBehavior(makeDefaultBehavior(req)) {
-        static_assert(std::same_as<OmittedBehavior, JsonFieldDefaultOmittedBehavior<ValueType>>,
+        static_assert(std::same_as<OmittedBehavior, DefaultFieldOmitBehavior<ValueType>>,
             "JsonField requires default omitted behavior for this constructor");
         static_assert(!IsReferenceWrapper<std::remove_cvref_t<Converter>>::value,
             "JsonField requires non-reference_wrapper Converter for this constructor");
@@ -185,7 +202,7 @@ struct JsonField {
         std::optional<ValueType> skip)
         : member(memberPtr), converterRef(std::cref(conv)), key(keyName),
           omittedBehavior(makeDefaultBehavior(req, std::move(def), std::move(skip))) {
-        static_assert(std::same_as<OmittedBehavior, JsonFieldDefaultOmittedBehavior<ValueType>>,
+        static_assert(std::same_as<OmittedBehavior, DefaultFieldOmitBehavior<ValueType>>,
             "JsonField requires default omitted behavior for this constructor");
         static_assert(!IsReferenceWrapper<std::remove_cvref_t<Converter>>::value,
             "JsonField requires non-reference_wrapper Converter for this constructor");
@@ -202,7 +219,7 @@ struct JsonField {
     constexpr explicit JsonField(MemberPtrType memberPtr, const char* keyName,
         std::reference_wrapper<const Converter> convRef, bool req,
         std::optional<ValueType> def, std::optional<ValueType> skip)
-        requires std::same_as<OmittedBehavior, JsonFieldDefaultOmittedBehavior<ValueType>>
+        requires std::same_as<OmittedBehavior, DefaultFieldOmitBehavior<ValueType>>
         : member(memberPtr), converterRef(convRef), key(keyName),
           omittedBehavior(makeDefaultBehavior(req, std::move(def), std::move(skip))) {}
 
@@ -264,11 +281,14 @@ private:
     /// @param defaultValue 既定値（任意）
     /// @param skipWhenEqual この値と等しい場合は書き出しを省略（任意）
     /// @return 生成した既定の省略時挙動
-    static constexpr JsonFieldDefaultOmittedBehavior<ValueType> makeDefaultBehavior(
+    static constexpr DefaultFieldOmitBehavior<ValueType> makeDefaultBehavior(
         bool required, std::optional<ValueType> defaultValue = std::nullopt,
         std::optional<ValueType> skipWhenEqual = std::nullopt) {
-        JsonFieldDefaultOmittedBehavior<ValueType> behavior{};
-        behavior.required = required;
+        if (required) {
+            throw std::runtime_error(
+                "JsonField: required behavior must use RequiredFieldOmitBehavior");
+        }
+        DefaultFieldOmitBehavior<ValueType> behavior{};
         behavior.defaultValue = std::move(defaultValue);
         behavior.skipWhenEqual = std::move(skipWhenEqual);
         return behavior;
@@ -413,8 +433,11 @@ constexpr auto makeJsonFieldWithDefault(MemberPtrType memberPtr, const char* key
     using ValueT = MemberPointerValueType<MemberPtrType>;
     const auto& conv = getConverter<ValueT>();
     using ConvT = std::remove_cvref_t<decltype(conv)>;
-    JsonFieldDefaultOmittedBehavior<ValueT> behavior{};
-    behavior.required = req;
+    if (req) {
+        throw std::runtime_error(
+            "makeJsonFieldWithDefault requires RequiredFieldOmitBehavior for required fields");
+    }
+    DefaultFieldOmitBehavior<ValueT> behavior{};
     behavior.defaultValue = std::move(defaultValue);
     return JsonField<MemberPtrType, ConvT>(memberPtr, keyName, std::cref(conv), behavior);
 }
@@ -428,8 +451,11 @@ constexpr auto makeJsonFieldSkipIfEqual(MemberPtrType memberPtr, const char* key
         "makeJsonFieldSkipIfEqual requires the member value to be equality comparable");
     const auto& conv = getConverter<ValueT>();
     using ConvT = std::remove_cvref_t<decltype(conv)>;
-    JsonFieldDefaultOmittedBehavior<ValueT> behavior{};
-    behavior.required = req;
+    if (req) {
+        throw std::runtime_error(
+            "makeJsonFieldSkipIfEqual requires RequiredFieldOmitBehavior for required fields");
+    }
+    DefaultFieldOmitBehavior<ValueT> behavior{};
     behavior.skipWhenEqual = skipValue;
     return JsonField<MemberPtrType, ConvT>(memberPtr, keyName, std::cref(conv), behavior);
 }
@@ -444,14 +470,15 @@ constexpr auto makeJsonFieldDefaultAndSkip(MemberPtrType memberPtr, const char* 
         "makeJsonFieldDefaultAndSkip requires the member value to be equality comparable");
     const auto& conv = getConverter<ValueT>();
     using ConvT = std::remove_cvref_t<decltype(conv)>;
-    JsonFieldDefaultOmittedBehavior<ValueT> behavior{};
-    behavior.required = req;
+    if (req) {
+        throw std::runtime_error(
+            "makeJsonFieldDefaultAndSkip requires RequiredFieldOmitBehavior for required fields");
+    }
+    DefaultFieldOmitBehavior<ValueT> behavior{};
     behavior.defaultValue = std::move(defaultValue);
     behavior.skipWhenEqual = skipValue;
     return JsonField<MemberPtrType, ConvT>(memberPtr, keyName, std::cref(conv), behavior);
 }
-
-
 
 // ******************************************************************************** enum用返還方法
 
