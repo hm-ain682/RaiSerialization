@@ -166,6 +166,36 @@ struct Holder {
     }
 };
 
+// ********************************************************************************
+// JsonField の既定値と書き出し省略に関するテスト
+// ********************************************************************************
+
+struct DefaultFieldTest {
+    int a = 0;
+    int b = 0;
+
+    const IJsonFieldSet& jsonFields() const {
+        static const auto fields = makeJsonFieldSet<DefaultFieldTest>(
+            makeJsonField(&DefaultFieldTest::a, "a"),
+            makeJsonFieldWithDefault(&DefaultFieldTest::b, "b", 42)
+        );
+        return fields;
+    }
+};
+
+struct SkipFieldTest {
+    int a = 1;
+    int b = 0;
+
+    const IJsonFieldSet& jsonFields() const {
+        static const auto fields = makeJsonFieldSet<SkipFieldTest>(
+            makeJsonField(&SkipFieldTest::a, "a"),
+            makeJsonFieldSkipIfEqual(&SkipFieldTest::b, "b", 0)
+        );
+        return fields;
+    }
+};
+
 TEST(JsonPolymorphicTest, ReadSingleCustomKey) {
     Holder original;
     original.item = std::make_unique<POne>();
@@ -194,6 +224,28 @@ TEST(JsonPolymorphicTest, WriteAndReadRoundTripUsingCustomKey) {
     Holder original;
     original.item = std::move(one);
     testJsonRoundTrip(original, "{item:{kind:\"One\",x:99},arr:[]}");
+}
+
+TEST(JsonFieldDefaults, MissingKeySetsDefault) {
+    DefaultFieldTest obj{};
+    readJsonString("{a:1}", obj);
+    EXPECT_EQ(obj.a, 1);
+    EXPECT_EQ(obj.b, 42);
+
+    // キーが存在するときは既定値は適用されない
+    readJsonString("{a:2,b:7}", obj);
+    EXPECT_EQ(obj.a, 2);
+    EXPECT_EQ(obj.b, 7);
+}
+
+TEST(JsonFieldSkipWrite, OmitWhenValueMatches) {
+    SkipFieldTest s{};
+    s.a = 1;
+    s.b = 0;
+    EXPECT_EQ(getJsonContent(s), "{a:1}");
+
+    s.b = 5;
+    EXPECT_EQ(getJsonContent(s), "{a:1,b:5}");
 }
 
 // ********************************************************************************

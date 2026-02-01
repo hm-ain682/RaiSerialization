@@ -44,6 +44,11 @@ public:
     /// @note ポリモーフィック型の書き出し時に使用する。
     virtual void writeFieldsOnly(JsonWriter& writer, const void* obj) const = 0;
 
+    /// @brief オブジェクト全体の読み込みを行う（startObject/endObject を含む）。
+    /// @param parser 読み取り元の JsonParser
+    /// @param obj 対象オブジェクトの void* ポインタ
+    virtual void readObject(JsonParser& parser, void* obj) const = 0;
+
     /// @brief JSONキーに対応するフィールドを読み込む（startObject/endObjectなし）。
     /// @param parser 読み取り元のJsonParserオブジェクト。
     /// @param obj 対象オブジェクトのvoidポインタ。
@@ -66,7 +71,7 @@ private:
     // static_assertをメンバー関数に移動して遅延評価させる
     static constexpr void validateFields() {
         static_assert((std::is_base_of_v<typename std::remove_cvref_t<Fields>::OwnerType, Owner> && ...),
-                      "JsonFieldSetBody fields must be accessible from Owner type");
+            "JsonFieldSetBody fields must be accessible from Owner type");
     }
 
 public:
@@ -74,15 +79,15 @@ public:
 
     constexpr explicit JsonFieldSetBody(Fields... fields)
         : fields_(std::move(fields)...) {
-        validateFields(); // ここで検証を実行
+        validateFields();
 
         // Build a small array of key/value descriptors from the stored fields_
         // so SortedHashArrayMap can be constructed from elements that have
-        // .key and .value members (we map JsonField::required -> value here).
+        // .key and .value members (we map JsonField::isRequired() -> value here).
         using KV = std::pair<std::string_view, bool>;
         auto buildArr = [&]<std::size_t... I>(std::index_sequence<I...>) {
             std::array<KV, N_> arr{};
-            ((arr[I] = KV{ std::get<I>(fields_).key, std::get<I>(fields_).required }), ...);
+            ((arr[I] = KV{ std::get<I>(fields_).key, std::get<I>(fields_).isRequired() }), ...);
             return arr;
         };
 
@@ -108,16 +113,20 @@ public:
     void writeFieldsOnly(JsonWriter& writer, const void* obj) const override {
         const Owner* owner = static_cast<const Owner*>(obj);
         forEachField([&](std::size_t, const auto& field) {
-            writer.key(field.key);
             const auto& value = owner->*(field.member);
+
+            // 指定された値と等しい場合は書き出しを省略
+            if (field.shouldSkipWrite(value)) {
+                return; // continue
+            }
+
+            writer.key(field.key);
             using FieldType = std::remove_cvref_t<decltype(field)>;
 
             // デフォルトの toJson に委譲（明示的な分岐不要）
             field.write(writer, value);
         });
     }
-private:
-    // JsonFieldの書き出しヘルパーに委譲するため、個別のwriteObject群は削除
 
     // ******************************************************************************** 読み込み
 private:
@@ -144,24 +153,26 @@ private:
 
             // テンプレート展開により各フィールドの型に応じた処理が静的に解決される
             visitField(fieldIndex, [&](const auto& field) {
-                using FieldType = std::remove_cvref_t<decltype(field)>;
-                using ValueType = typename FieldType::ValueType;
-
-                // デフォルトの fromJson に委譲（明示的な分岐不要）
-                obj.*(field.member) = field.fromJson(parser);
+                // デフォルトの read に委譲（明示的な分岐不要）
+                obj.*(field.member) = field.read(parser);
             });
         }
 
-        // 必須フィールドのチェック
+        // 必須フィールドのチェックと既定値の反映
         forEachField([&](std::size_t index, const auto& field) {
-            if (field.required && !seen[index]) {
+            if (seen[index]) {
+                return; // 読み込み済み。
+            }
+            if (field.isRequired()) {
                 throw std::runtime_error(
                     std::string("JsonParser: missing required key '") + field.key + "'");
             }
+            if (field.hasDefault()) {
+                auto v = field.makeDefault();
+                obj.*(field.member) = std::move(v);
+            }
         });
     }
-
-    // JsonFieldの読み取りヘルパーに委譲するため、個別のreadObject群は削除
 
     // ************************************************************************** JSONフィールド操作
 public:
@@ -171,6 +182,14 @@ public:
     /// @param key 読み込むフィールドのキー名。
     /// @return フィールドが見つかって読み込まれた場合はtrue、見つからない場合はfalse。
     /// @note ポリモーフィック型の読み込み時に使用する。
+    /// @brief オブジェクト全体の読み込み（startObject/endObjectを含む）。
+    void readObject(JsonParser& parser, void* obj) const override {
+        Owner* owner = static_cast<Owner*>(obj);
+        parser.startObject();
+        readObjectFields(parser, *owner);
+        parser.endObject();
+    }
+
     bool readFieldByKey(JsonParser& parser, void* obj, std::string_view key) const override {
         Owner* owner = static_cast<Owner*>(obj);
         auto foundIndex = findFieldIndex(key);
@@ -196,7 +215,7 @@ private:
     /// @return 必須フィールドならtrue。
     bool isFieldRequired(std::size_t index) const {
         bool result = false;
-        visitField(index, [&](const auto& field) { result = field.required; });
+        visitField(index, [&](const auto& field) { result = field.isRequired(); });
         return result;
     }
 
@@ -329,15 +348,8 @@ void writeJsonObject(JsonWriter& writer, const T& obj) {
 export template <HasJsonFields T>
 void readJsonObject(JsonParser& parser, T& obj) {
     auto& fields = obj.jsonFields();
-    parser.startObject();
-    while (!parser.nextIsEndObject()) {
-        std::string key = parser.nextKey();
-        if (!fields.readFieldByKey(parser, &obj, key)) {
-            parser.noteUnknownKey(key);
-            parser.skipValue();
-        }
-    }
-    parser.endObject();
+    // Delegate full object parsing (including defaults and required checks)
+    fields.readObject(parser, &obj);
 }
 
 }  // namespace rai::json
