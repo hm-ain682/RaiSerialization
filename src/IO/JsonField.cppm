@@ -50,8 +50,8 @@ struct MemberPointerTraits<Value Owner::*> {
 };
 
 /// @brief メンバーポインタ型から対応する値型を取り出す型エイリアス。
-export template <typename MemberPtrType>
-using MemberPointerValueType = typename MemberPointerTraits<MemberPtrType>::ValueType;
+export template <typename MemberPtr>
+using MemberPointerValueType = typename MemberPointerTraits<MemberPtr>::ValueType;
 
 /// @brief SingleValueFieldOmitBehavior を利用できるか判定するconcept。
 /// @tparam ValueType 対象型
@@ -164,14 +164,14 @@ struct RequiredFieldOmitBehavior {
 // ******************************************************************************** フィールド
 
 /// @brief メンバー変数とJSON項目を対応付ける。
-export template <typename MemberPtrType, typename Converter, typename OmittedBehavior>
+export template <typename MemberPtr, typename Converter, typename OmittedBehavior>
 struct JsonField {
-    static_assert(std::is_member_object_pointer_v<MemberPtrType>,
-        "JsonField requires MemberPtrType to be a member object pointer");
-    using Traits = MemberPointerTraits<MemberPtrType>; 
+    static_assert(std::is_member_object_pointer_v<MemberPtr>,
+        "JsonField requires MemberPtr to be a member object pointer");
+    using Traits = MemberPointerTraits<MemberPtr>; 
     using OwnerType = typename Traits::OwnerType;
     using ValueType = typename Traits::ValueType;
-    static_assert(IsJsonConverter<Converter, MemberPointerValueType<MemberPtrType>>,
+    static_assert(IsJsonConverter<Converter, MemberPointerValueType<MemberPtr>>,
         "Converter must satisfy IsJsonConverter for the member value type");
     static_assert(IsJsonFieldOmittedBehavior<OmittedBehavior, ValueType>,
         "OmittedBehavior must satisfy IsJsonFieldOmittedBehavior for the member value type");
@@ -181,7 +181,7 @@ struct JsonField {
     /// @param keyName JSONキー名
     /// @param conv コンバータへの参照（呼び出し側で寿命を保証）
     /// @param behavior 省略時挙動
-    constexpr explicit JsonField(MemberPtrType memberPtr, const char* keyName,
+    constexpr explicit JsonField(MemberPtr memberPtr, const char* keyName,
         std::reference_wrapper<const Converter> conv, OmittedBehavior behavior)
         : member(memberPtr), converter_(conv), key(keyName),
           omittedBehavior_(std::move(behavior)) {}
@@ -210,7 +210,7 @@ struct JsonField {
         omittedBehavior_.applyMissing(outValue, key);
     }
 
-    MemberPtrType member{};                               ///< メンバポインタ
+    MemberPtr member{};                               ///< メンバポインタ
     const char* key{};                                    ///< JSONキー名
 private:
     std::reference_wrapper<const Converter> converter_;  ///< 値変換器への参照（必ず有効であること）
@@ -218,12 +218,12 @@ private:
 };
 
 /// @brief JsonField の型推論ガイド（reference_wrapper + 省略時挙動）。
-/// @tparam MemberPtrType メンバポインタ型
+/// @tparam MemberPtr メンバポインタ型
 /// @tparam Converter コンバータ型
 /// @tparam OmittedBehavior 省略時挙動型
-export template <typename MemberPtrType, typename Converter, typename OmittedBehavior>
-JsonField(MemberPtrType, const char*, std::reference_wrapper<const Converter>, OmittedBehavior)
-    -> JsonField<MemberPtrType, Converter, OmittedBehavior>;
+export template <typename MemberPtr, typename Converter, typename OmittedBehavior>
+JsonField(MemberPtr, const char*, std::reference_wrapper<const Converter>, OmittedBehavior)
+    -> JsonField<MemberPtr, Converter, OmittedBehavior>;
 
 
 // ******************************************************************************** 基本型用変換方法
@@ -303,14 +303,13 @@ constexpr auto& getConverter() {
 }
 
 /// @brief 項目必須のJsonFieldを作って返す。
-///        与えられた MemberPtrType の値型（以下）に対するコンバータを使用する。
+///        与えられた MemberPtr の値型（以下）に対するコンバータを使用する。
 ///        基本型、HasJsonFields、HasReadJson/HasWriteJson
 /// @param memberPtr メンバポインタ
 /// @param keyName JSONキー名
-export template <typename MemberPtrType>
-constexpr auto getRequiredField(MemberPtrType memberPtr, const char* keyName) {
-    using ValueT = MemberPointerValueType<MemberPtrType>;
-    const auto& converter = getConverter<ValueT>();
+export template <typename MemberPtr>
+constexpr auto getRequiredField(MemberPtr memberPtr, const char* keyName) {
+    const auto& converter = getConverter<MemberPointerValueType<MemberPtr>>();
     return getRequiredField(memberPtr, keyName, converter);
 }
 
@@ -318,27 +317,27 @@ constexpr auto getRequiredField(MemberPtrType memberPtr, const char* keyName) {
 /// @param memberPtr メンバポインタ
 /// @param keyName JSONキー名
 /// @param converter 値型に対応するコンバータ
-export template <typename MemberPtrType, typename Converter>
-constexpr auto getRequiredField(MemberPtrType memberPtr, const char* keyName,
+export template <typename MemberPtr, typename Converter>
+constexpr auto getRequiredField(MemberPtr memberPtr, const char* keyName,
     const Converter& converter) {
-    using ValueT = MemberPointerValueType<MemberPtrType>;
-    using ConvT = std::remove_cvref_t<Converter>;
-    static_assert(IsJsonConverter<ConvT, ValueT>,
+    using Value = MemberPointerValueType<MemberPtr>;
+    using ConverterBody = std::remove_cvref_t<Converter>;
+    static_assert(IsJsonConverter<ConverterBody, Value>,
         "getRequiredField requires Converter to satisfy IsJsonConverter");
-    using BehaviorType = RequiredFieldOmitBehavior<ValueT>;
-    return JsonField<MemberPtrType, ConvT, BehaviorType>(
-        memberPtr, keyName, std::cref(converter), BehaviorType{});
+    using Behavior = RequiredFieldOmitBehavior<Value>;
+    return JsonField<MemberPtr, ConverterBody, Behavior>(
+        memberPtr, keyName, std::cref(converter), Behavior{});
 }
 
 /// @brief 読み込み時省略では既定値を代入し、書き込み時は既定値と等しい場合に省略するJsonFieldを返す。
 /// @param memberPtr メンバポインタ
 /// @param keyName JSONキー名
 /// @param defaultValue 欠落時に代入し、書き込み時の省略判定に使う値
-export template <typename MemberPtrType>
-constexpr auto getDefaultOmittedField(MemberPtrType memberPtr, const char* keyName,
-    MemberPointerValueType<MemberPtrType> defaultValue) {
-    using ValueT = MemberPointerValueType<MemberPtrType>;
-    const auto& converter = getConverter<ValueT>();
+export template <typename MemberPtr>
+constexpr auto getDefaultOmittedField(MemberPtr memberPtr, const char* keyName,
+    MemberPointerValueType<MemberPtr> defaultValue) {
+    using Value = MemberPointerValueType<MemberPtr>;
+    const auto& converter = getConverter<Value>();
     return getDefaultOmittedField(memberPtr, keyName, std::move(defaultValue), converter);
 }
 
@@ -347,19 +346,19 @@ constexpr auto getDefaultOmittedField(MemberPtrType memberPtr, const char* keyNa
 /// @param keyName JSONキー名
 /// @param defaultValue 欠落時に代入し、書き込み時の省略判定に使う値
 /// @param converter 値型に対応するコンバータ
-export template <typename MemberPtrType, typename Converter>
-constexpr auto getDefaultOmittedField(MemberPtrType memberPtr, const char* keyName,
-    MemberPointerValueType<MemberPtrType> defaultValue, const Converter& converter) {
-    using ValueT = MemberPointerValueType<MemberPtrType>;
-    static_assert(IsSingleValueBehaviorAllowed<ValueT>,
+export template <typename MemberPtr, typename Converter>
+constexpr auto getDefaultOmittedField(MemberPtr memberPtr, const char* keyName,
+    MemberPointerValueType<MemberPtr> defaultValue, const Converter& converter) {
+    using Value = MemberPointerValueType<MemberPtr>;
+    static_assert(IsSingleValueBehaviorAllowed<Value>,
         "getDefaultOmittedField requires IsSingleValueBehaviorAllowed");
-    using ConvT = std::remove_cvref_t<Converter>;
-    static_assert(IsJsonConverter<ConvT, ValueT>,
+    using ConverterBody = std::remove_cvref_t<Converter>;
+    static_assert(IsJsonConverter<ConverterBody, Value>,
         "getDefaultOmittedField requires Converter to satisfy IsJsonConverter");
-    using BehaviorType = SingleValueFieldOmitBehavior<ValueT>;
-    BehaviorType behavior{};
+    using Behavior = SingleValueFieldOmitBehavior<Value>;
+    Behavior behavior{};
     behavior.defaultValue = std::move(defaultValue);
-    return JsonField<MemberPtrType, ConvT, BehaviorType>(
+    return JsonField<MemberPtr, ConverterBody, Behavior>(
         memberPtr, keyName, std::cref(converter), behavior);
 }
 
@@ -367,11 +366,11 @@ constexpr auto getDefaultOmittedField(MemberPtrType memberPtr, const char* keyNa
 /// @param memberPtr メンバポインタ
 /// @param keyName JSONキー名
 /// @param skipValue 書き込み時の省略判定に使う値
-export template <typename MemberPtrType>
-constexpr auto getInitialOmittedField(MemberPtrType memberPtr, const char* keyName,
-    const MemberPointerValueType<MemberPtrType>& skipValue) {
-    using ValueT = MemberPointerValueType<MemberPtrType>;
-    const auto& converter = getConverter<ValueT>();
+export template <typename MemberPtr>
+constexpr auto getInitialOmittedField(MemberPtr memberPtr, const char* keyName,
+    const MemberPointerValueType<MemberPtr>& skipValue) {
+    using Value = MemberPointerValueType<MemberPtr>;
+    const auto& converter = getConverter<Value>();
     return getInitialOmittedField(memberPtr, keyName, skipValue, converter);
 }
 
@@ -380,21 +379,21 @@ constexpr auto getInitialOmittedField(MemberPtrType memberPtr, const char* keyNa
 /// @param keyName JSONキー名
 /// @param skipValue 書き込み時の省略判定に使う値
 /// @param converter 値型に対応するコンバータ
-export template <typename MemberPtrType, typename Converter>
-constexpr auto getInitialOmittedField(MemberPtrType memberPtr, const char* keyName,
-    const MemberPointerValueType<MemberPtrType>& skipValue, const Converter& converter) {
-    using ValueT = MemberPointerValueType<MemberPtrType>;
-    static_assert(IsSingleValueBehaviorAllowed<ValueT>,
+export template <typename MemberPtr, typename Converter>
+constexpr auto getInitialOmittedField(MemberPtr memberPtr, const char* keyName,
+    const MemberPointerValueType<MemberPtr>& skipValue, const Converter& converter) {
+    using Value = MemberPointerValueType<MemberPtr>;
+    static_assert(IsSingleValueBehaviorAllowed<Value>,
         "getInitialOmittedField requires IsSingleValueBehaviorAllowed");
-    static_assert(std::equality_comparable<ValueT>,
+    static_assert(std::equality_comparable<Value>,
         "getInitialOmittedField requires the member value to be equality comparable");
-    using ConvT = std::remove_cvref_t<Converter>;
-    static_assert(IsJsonConverter<ConvT, ValueT>,
+    using ConverterBody = std::remove_cvref_t<Converter>;
+    static_assert(IsJsonConverter<ConverterBody, Value>,
         "getInitialOmittedField requires Converter to satisfy IsJsonConverter");
-    using BehaviorType = SingleValueFieldOmitBehavior<ValueT>;
-    BehaviorType behavior{};
+    using Behavior = SingleValueFieldOmitBehavior<Value>;
+    Behavior behavior{};
     behavior.defaultValue = skipValue;
-    return JsonField<MemberPtrType, ConvT, BehaviorType>(
+    return JsonField<MemberPtr, ConverterBody, Behavior>(
         memberPtr, keyName, std::cref(converter), behavior);
 }
 
@@ -515,32 +514,32 @@ constexpr auto makeJsonEnumMap(std::span<const EnumEntry<Enum>, N> entries) {
 }
 
 /// @brief 列挙型メンバに対する `JsonField` を作成する（`JsonEnumMap` を渡す版）。
-export template <typename MemberPtrType, typename MapType>
-constexpr auto makeJsonEnumField(MemberPtrType memberPtr, const char* keyName,
+export template <typename MemberPtr, typename MapType>
+constexpr auto makeJsonEnumField(MemberPtr memberPtr, const char* keyName,
     const MapType& map) {
     static_assert(IsJsonEnumMap<MapType>,
         "makeJsonEnumField requires MapType to satisfy IsJsonEnumMap");
-    static_assert(std::same_as<typename MapType::Enum, MemberPointerValueType<MemberPtrType>>,
+    static_assert(std::same_as<typename MapType::Enum, MemberPointerValueType<MemberPtr>>,
         "MapType::Enum must match the member's value type");
     static const EnumConverter<MapType> conv(map);
-    using ValueT = MemberPointerValueType<MemberPtrType>;
-    using BehaviorType = RequiredFieldOmitBehavior<ValueT>;
-    return JsonField<MemberPtrType, EnumConverter<MapType>, BehaviorType>(
-        memberPtr, keyName, std::cref(conv), BehaviorType{});
+    using Value = MemberPointerValueType<MemberPtr>;
+    using Behavior = RequiredFieldOmitBehavior<Value>;
+    return JsonField<MemberPtr, EnumConverter<MapType>, Behavior>(
+        memberPtr, keyName, std::cref(conv), Behavior{});
 }
 
 /// @brief 外部で管理される `EnumConverter` を用いて `JsonField` を作成する（コンバータはフィールドより長く存続する必要があります）。
-export template <typename MemberPtrType, typename MapType>
-constexpr auto makeJsonEnumField(MemberPtrType memberPtr, const char* keyName,
+export template <typename MemberPtr, typename MapType>
+constexpr auto makeJsonEnumField(MemberPtr memberPtr, const char* keyName,
     const EnumConverter<MapType>& conv) {
     static_assert(IsJsonEnumMap<MapType>,
         "makeJsonEnumField requires MapType to satisfy IsJsonEnumMap");
-    static_assert(std::same_as<typename MapType::Enum, MemberPointerValueType<MemberPtrType>>,
+    static_assert(std::same_as<typename MapType::Enum, MemberPointerValueType<MemberPtr>>,
         "MapType::Enum must match the member's value type");
-    using ValueT = MemberPointerValueType<MemberPtrType>;
-    using BehaviorType = RequiredFieldOmitBehavior<ValueT>;
-    return JsonField<MemberPtrType, EnumConverter<MapType>, BehaviorType>(
-        memberPtr, keyName, std::cref(conv), BehaviorType{});
+    using Value = MemberPointerValueType<MemberPtr>;
+    using Behavior = RequiredFieldOmitBehavior<Value>;
+    return JsonField<MemberPtr, EnumConverter<MapType>, Behavior>(
+        memberPtr, keyName, std::cref(conv), Behavior{});
 }
 
 
@@ -607,40 +606,40 @@ private:
 };
 
 /// @brief 配列形式のJSONを読み書きする汎用フィールド。
-/// @tparam MemberPtrType コンテナ型のメンバー変数へのポインタ。
+/// @tparam MemberPtr コンテナ型のメンバー変数へのポインタ。
 /// @details push_back または insert を持つコンテナに対応する。
 // JsonContainerField helper: construct a ContainerConverter for the container element if available
-export template <typename MemberPtrType>
-constexpr auto makeJsonContainerField(MemberPtrType memberPtr, const char* keyName) {
-    using Container = MemberPointerValueType<MemberPtrType>;
+export template <typename MemberPtr>
+constexpr auto makeJsonContainerField(MemberPtr memberPtr, const char* keyName) {
+    using Container = MemberPointerValueType<MemberPtr>;
     static_assert(IsContainer<Container>,
         "makeJsonContainerField: member is not a container type");
     using Elem = std::remove_cvref_t<std::ranges::range_value_t<Container>>;
     const auto& elemConvInstance = getConverter<Elem>();
     using ElemConv = std::remove_cvref_t<decltype(elemConvInstance)>;
     static const ContainerConverter<Container, ElemConv> conv(elemConvInstance);
-    using ConvT = std::remove_cvref_t<decltype(conv)>;
-    using BehaviorType = RequiredFieldOmitBehavior<Container>;
-    return JsonField<MemberPtrType, ConvT, BehaviorType>(
-        memberPtr, keyName, std::cref(conv), BehaviorType{});
+    using ConverterBody = std::remove_cvref_t<decltype(conv)>;
+    using Behavior = RequiredFieldOmitBehavior<Container>;
+    return JsonField<MemberPtr, ConverterBody, Behavior>(
+        memberPtr, keyName, std::cref(conv), Behavior{});
 } 
 
 /// @brief 明示的な `ContainerConverter` を渡して `JsonField` を作成するオーバーロード。
-export template <typename MemberPtrType, typename Container, typename ElemConv>
-constexpr auto makeJsonContainerField(MemberPtrType memberPtr, const char* keyName,
+export template <typename MemberPtr, typename Container, typename ElemConv>
+constexpr auto makeJsonContainerField(MemberPtr memberPtr, const char* keyName,
     const ContainerConverter<Container, ElemConv>& conv) {
-    static_assert(std::is_member_object_pointer_v<MemberPtrType>,
-        "makeJsonContainerField requires MemberPtrType to be a member object pointer");
-    static_assert(std::same_as<MemberPointerValueType<MemberPtrType>, Container>,
+    static_assert(std::is_member_object_pointer_v<MemberPtr>,
+        "makeJsonContainerField requires MemberPtr to be a member object pointer");
+    static_assert(std::same_as<MemberPointerValueType<MemberPtr>, Container>,
         "Member pointer value must match Container");
     static_assert(IsContainer<Container>,
         "makeJsonContainerField requires Container to be a container type");
     static_assert(IsJsonConverter<ElemConv, std::remove_cvref_t<std::ranges::range_value_t<Container>>>,
         "ElemConv must be a JsonConverter for the container element type");
-    using ConvT = std::remove_cvref_t<ContainerConverter<Container, ElemConv>>;
-    using BehaviorType = RequiredFieldOmitBehavior<Container>;
-    return JsonField<MemberPtrType, ConvT, BehaviorType>(
-        memberPtr, keyName, std::cref(conv), BehaviorType{});
+    using ConverterBody = std::remove_cvref_t<ContainerConverter<Container, ElemConv>>;
+    using Behavior = RequiredFieldOmitBehavior<Container>;
+    return JsonField<MemberPtr, ConverterBody, Behavior>(
+        memberPtr, keyName, std::cref(conv), Behavior{});
 }
 
 
@@ -699,33 +698,32 @@ constexpr auto& getUniquePtrConverter() {
 }
 
 /// @brief `unique_ptr` 型のメンバ用に `JsonField` を作成する（既定の要素コンバータを使用）。
-export template <typename MemberPtrType>
+export template <typename MemberPtr>
 constexpr auto makeJsonUniquePtrField(
-    MemberPtrType memberPtr, const char* keyName) {
-    static_assert(std::is_member_object_pointer_v<MemberPtrType>,
-        "makeJsonUniquePtrField requires MemberPtrType to be a member object pointer");
-    static_assert(IsUniquePtr<MemberPointerValueType<MemberPtrType>>,
+    MemberPtr memberPtr, const char* keyName) {
+    static_assert(std::is_member_object_pointer_v<MemberPtr>,
+        "makeJsonUniquePtrField requires MemberPtr to be a member object pointer");
+    static_assert(IsUniquePtr<MemberPointerValueType<MemberPtr>>,
         "makeJsonUniquePtrField requires member to be a unique_ptr-like type");
-    using Ptr = MemberPointerValueType<MemberPtrType>;
+    using Ptr = MemberPointerValueType<MemberPtr>;
     auto& converter = getUniquePtrConverter<Ptr>();
-    using ConvT = std::remove_cvref_t<decltype(converter)>;
-    using BehaviorType = RequiredFieldOmitBehavior<Ptr>;
-    return JsonField<MemberPtrType, ConvT, BehaviorType>(
-        memberPtr, keyName, std::cref(converter), BehaviorType{});
+    using ConverterBody = std::remove_cvref_t<decltype(converter)>;
+    using Behavior = RequiredFieldOmitBehavior<Ptr>;
+    return JsonField<MemberPtr, ConverterBody, Behavior>(
+        memberPtr, keyName, std::cref(converter), Behavior{});
 }
 
 /// @brief `unique_ptr` 型のメンバ用に `JsonField` を作成する（要素コンバータを明示的に指定する版）。
-export template <typename MemberPtrType, typename PtrConv>
+export template <typename MemberPtr, typename Converter>
 constexpr auto makeJsonUniquePtrField(
-    MemberPtrType memberPtr, const char* keyName, const PtrConv& conv) {
-    static_assert(std::is_member_object_pointer_v<MemberPtrType>,
-        "makeJsonUniquePtrField requires MemberPtrType to be a member object pointer");
-    static_assert(IsUniquePtr<MemberPointerValueType<MemberPtrType>>,
+    MemberPtr memberPtr, const char* keyName, const Converter& conv) {
+    static_assert(std::is_member_object_pointer_v<MemberPtr>,
+        "makeJsonUniquePtrField requires MemberPtr to be a member object pointer");
+    static_assert(IsUniquePtr<MemberPointerValueType<MemberPtr>>,
         "makeJsonUniquePtrField requires member to be a unique_ptr-like type");
-    using Ptr = MemberPointerValueType<MemberPtrType>;
-    using BehaviorType = RequiredFieldOmitBehavior<Ptr>;
-    return JsonField<MemberPtrType, std::remove_cvref_t<PtrConv>, BehaviorType>(
-        memberPtr, keyName, std::cref(conv), BehaviorType{});
+    using Behavior = RequiredFieldOmitBehavior<MemberPointerValueType<MemberPtr>>;
+    return JsonField<MemberPtr, std::remove_cvref_t<Converter>, Behavior>(
+        memberPtr, keyName, std::cref(conv), Behavior{});
 }
 
 
@@ -907,19 +905,19 @@ constexpr auto makeVariantConverter(ElemConv elemConv) {
 }
 
 /// @brief `std::variant` 型のメンバ用に `JsonField` を作成するヘルパー（既定の `VariantConverter` を使用）。
-export template <typename MemberPtrType>
+export template <typename MemberPtr>
 constexpr auto makeJsonVariantField(
-    MemberPtrType memberPtr, const char* keyName) {
-    static_assert(std::is_member_object_pointer_v<MemberPtrType>,
-        "makeJsonVariantField requires MemberPtrType to be a member object pointer");
-    static_assert(IsStdVariant<MemberPointerValueType<MemberPtrType>>,
+    MemberPtr memberPtr, const char* keyName) {
+    static_assert(std::is_member_object_pointer_v<MemberPtr>,
+        "makeJsonVariantField requires MemberPtr to be a member object pointer");
+    static_assert(IsStdVariant<MemberPointerValueType<MemberPtr>>,
         "makeJsonVariantField requires member to be a std::variant");
-    using Var = MemberPointerValueType<MemberPtrType>;
+    using Var = MemberPointerValueType<MemberPtr>;
     static const auto converter = makeVariantConverter<Var>();
-    using ConvT = std::remove_cvref_t<decltype(converter)>;
-    using BehaviorType = RequiredFieldOmitBehavior<Var>;
-    return JsonField<MemberPtrType, ConvT, BehaviorType>(
-        memberPtr, keyName, std::cref(converter), BehaviorType{});
+    using ConverterBody = std::remove_cvref_t<decltype(converter)>;
+    using Behavior = RequiredFieldOmitBehavior<Var>;
+    return JsonField<MemberPtr, ConverterBody, Behavior>(
+        memberPtr, keyName, std::cref(converter), Behavior{});
 }
 
 
@@ -1035,19 +1033,19 @@ private:
 };
 
 /// @brief 汎用の `TokenDispatchConverter` を受け取って `JsonField` を作成するヘルパー。
-export template <typename MemberPtrType, typename Converter>
-constexpr auto makeJsonTokenDispatchField(MemberPtrType memberPtr, const char* keyName,
+export template <typename MemberPtr, typename Converter>
+constexpr auto makeJsonTokenDispatchField(MemberPtr memberPtr, const char* keyName,
     const Converter& conv) {
-    static_assert(std::is_member_object_pointer_v<MemberPtrType>,
-        "makeJsonTokenDispatchField requires MemberPtrType to be a member object pointer");
+    static_assert(std::is_member_object_pointer_v<MemberPtr>,
+        "makeJsonTokenDispatchField requires MemberPtr to be a member object pointer");
     static_assert(requires { typename Converter::Value; },
         "Converter must define nested type 'Value'");
-    static_assert(std::same_as<typename Converter::Value, MemberPointerValueType<MemberPtrType>>,
+    static_assert(std::same_as<typename Converter::Value, MemberPointerValueType<MemberPtr>>,
         "Converter::Value must match the member's value type");
-    using ValueT = MemberPointerValueType<MemberPtrType>;
-    using BehaviorType = RequiredFieldOmitBehavior<ValueT>;
-    return JsonField<MemberPtrType, std::remove_cvref_t<Converter>, BehaviorType>(
-        memberPtr, keyName, std::cref(conv), BehaviorType{});
+    using Value = MemberPointerValueType<MemberPtr>;
+    using Behavior = RequiredFieldOmitBehavior<Value>;
+    return JsonField<MemberPtr, std::remove_cvref_t<Converter>, Behavior>(
+        memberPtr, keyName, std::cref(conv), Behavior{});
 }
 
 

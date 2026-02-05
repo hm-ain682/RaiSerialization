@@ -66,8 +66,6 @@ private:
     }
 
 public:
-    using FieldTupleType = std::tuple<std::remove_cvref_t<Fields>...>;
-
     constexpr explicit JsonFieldSetBody(Fields... fields)
         : fields_(std::move(fields)...) {
         validateFields();
@@ -198,7 +196,7 @@ private:
     // Use std::string_view for keys so lookups using std::string_view work
     // reliably without the SortedHashArrayMap needing string_view-specific code.
     collection::SortedHashArrayMap<std::string_view, bool, N_> fieldMap_{}; ///< ハッシュ順に整列したフィールド情報。
-    FieldTupleType fields_{}; ///< フィールド定義群。
+    std::tuple<std::remove_cvref_t<Fields>...> fields_{}; ///< フィールド定義群。
 };
 
 export template <typename Owner, typename... Fields>
@@ -210,7 +208,7 @@ using JsonFieldSet = JsonFieldSetBody<Owner, Fields...>;
 /// @tparam Left 左辺の型。
 /// @tparam Right 右辺の型。
 template <typename Left, typename Right>
-struct PromoteOwnerType {
+struct PromoteOwner {
     using type = std::conditional_t<
         std::is_base_of_v<Left, Right>, Right,
         std::conditional_t<std::is_base_of_v<Right, Left>, Left, void>>;
@@ -219,18 +217,18 @@ struct PromoteOwnerType {
 /// @brief 複数の所有者型から共通の所有者型を推論する。
 /// @tparam Owners 所有者型のパラメータパック。
 template <typename... Owners>
-struct DeduceOwnerType;
+struct DeduceOwner;
 
 template <typename Owner>
-struct DeduceOwnerType<Owner> {
+struct DeduceOwner<Owner> {
     using type = Owner;
 };
 
 template <typename Owner, typename Next, typename... Rest>
-struct DeduceOwnerType<Owner, Next, Rest...> {
-    using Promoted = typename PromoteOwnerType<Owner, Next>::type;
+struct DeduceOwner<Owner, Next, Rest...> {
+    using Promoted = typename PromoteOwner<Owner, Next>::type;
     static_assert(!std::is_same_v<Promoted, void>, "JsonField owner types are not compatible");
-    using type = typename DeduceOwnerType<Promoted, Rest...>::type;
+    using type = typename DeduceOwner<Promoted, Rest...>::type;
 };
 
 // ******************************************************************************** ヘルパー関数
@@ -253,7 +251,7 @@ constexpr auto makeJsonFieldSet(Fields... fields) {
 export template <typename... Fields>
 constexpr auto makeJsonFieldSet(Fields... fields) {
     static_assert(sizeof...(Fields) > 0, "makeJsonFieldSet requires explicit Owner when no fields are specified");
-    using Owner = typename DeduceOwnerType<typename std::remove_cvref_t<Fields>::OwnerType...>::type;
+    using Owner = typename DeduceOwner<typename std::remove_cvref_t<Fields>::OwnerType...>::type;
     return makeJsonFieldSet<Owner>(std::move(fields)...);
 }
 
