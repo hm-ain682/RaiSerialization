@@ -302,6 +302,19 @@ constexpr auto& getConverter() {
     }
 }
 
+/// @brief 値変換方法と省略時挙動を指定しJsonFieldを作って返す。
+/// @param memberPtr メンバポインタ
+/// @param keyName JSONキー名
+/// @param converter 値型に対応するコンバータ
+/// @param omitBehavior 省略時挙動
+export template <typename MemberPtr, typename Converter, typename OmitBehavior>
+constexpr auto getField(MemberPtr memberPtr, const char* keyName,
+    const Converter& converter, const OmitBehavior& omitBehavior) {
+    using ConverterBody = std::remove_cvref_t<Converter>;
+    return JsonField<MemberPtr, ConverterBody, OmitBehavior>(
+        memberPtr, keyName, std::cref(converter), omitBehavior);
+}
+
 /// @brief 項目必須のJsonFieldを作って返す。
 ///        与えられた MemberPtr の値型（以下）に対するコンバータを使用する。
 ///        基本型、HasJsonFields、HasReadJson/HasWriteJson
@@ -309,8 +322,10 @@ constexpr auto& getConverter() {
 /// @param keyName JSONキー名
 export template <typename MemberPtr>
 constexpr auto getRequiredField(MemberPtr memberPtr, const char* keyName) {
-    const auto& converter = getConverter<MemberPointerValueType<MemberPtr>>();
-    return getRequiredField(memberPtr, keyName, converter);
+    using Value = MemberPointerValueType<MemberPtr>;
+    const auto& converter = getConverter<Value>();
+    return getField(memberPtr, keyName, converter,
+        RequiredFieldOmitBehavior<Value>{});
 }
 
 /// @brief 項目必須のJsonFieldを作って返す（コンバータ指定版）。
@@ -320,16 +335,13 @@ constexpr auto getRequiredField(MemberPtr memberPtr, const char* keyName) {
 export template <typename MemberPtr, typename Converter>
 constexpr auto getRequiredField(MemberPtr memberPtr, const char* keyName,
     const Converter& converter) {
-    using Value = MemberPointerValueType<MemberPtr>;
-    using ConverterBody = std::remove_cvref_t<Converter>;
-    static_assert(IsJsonConverter<ConverterBody, Value>,
-        "getRequiredField requires Converter to satisfy IsJsonConverter");
-    using Behavior = RequiredFieldOmitBehavior<Value>;
-    return JsonField<MemberPtr, ConverterBody, Behavior>(
-        memberPtr, keyName, std::cref(converter), Behavior{});
+    return getField(memberPtr, keyName, converter,
+        RequiredFieldOmitBehavior<MemberPointerValueType<MemberPtr>>{});
 }
 
 /// @brief 読み込み時省略では既定値を代入し、書き込み時は既定値と等しい場合に省略するJsonFieldを返す。
+///        与えられた MemberPtr の値型（以下）に対するコンバータを使用する。
+///        基本型、HasJsonFields、HasReadJson/HasWriteJson
 /// @param memberPtr メンバポインタ
 /// @param keyName JSONキー名
 /// @param defaultValue 欠落時に代入し、書き込み時の省略判定に使う値
@@ -338,7 +350,8 @@ constexpr auto getDefaultOmittedField(MemberPtr memberPtr, const char* keyName,
     MemberPointerValueType<MemberPtr> defaultValue) {
     using Value = MemberPointerValueType<MemberPtr>;
     const auto& converter = getConverter<Value>();
-    return getDefaultOmittedField(memberPtr, keyName, std::move(defaultValue), converter);
+    SingleValueFieldOmitBehavior<Value> behavior{ .defaultValue = std::move(defaultValue) };
+    return getField(memberPtr, keyName, converter, behavior);
 }
 
 /// @brief 読み込み時省略では既定値を代入し、書き込み時は既定値と等しい場合に省略するJsonFieldを返す。
@@ -349,20 +362,14 @@ constexpr auto getDefaultOmittedField(MemberPtr memberPtr, const char* keyName,
 export template <typename MemberPtr, typename Converter>
 constexpr auto getDefaultOmittedField(MemberPtr memberPtr, const char* keyName,
     MemberPointerValueType<MemberPtr> defaultValue, const Converter& converter) {
-    using Value = MemberPointerValueType<MemberPtr>;
-    static_assert(IsSingleValueBehaviorAllowed<Value>,
-        "getDefaultOmittedField requires IsSingleValueBehaviorAllowed");
-    using ConverterBody = std::remove_cvref_t<Converter>;
-    static_assert(IsJsonConverter<ConverterBody, Value>,
-        "getDefaultOmittedField requires Converter to satisfy IsJsonConverter");
-    using Behavior = SingleValueFieldOmitBehavior<Value>;
-    Behavior behavior{};
-    behavior.defaultValue = std::move(defaultValue);
-    return JsonField<MemberPtr, ConverterBody, Behavior>(
-        memberPtr, keyName, std::cref(converter), behavior);
+    SingleValueFieldOmitBehavior<MemberPointerValueType<MemberPtr>> behavior
+    { .defaultValue = std::move(defaultValue) };
+    return getField(memberPtr, keyName, converter, behavior);
 }
 
 /// @brief 読み込み時省略では何も行わず、書き込み時のみ指定値と等しい場合に省略するJsonFieldを返す。
+///        与えられた MemberPtr の値型（以下）に対するコンバータを使用する。
+///        基本型、HasJsonFields、HasReadJson/HasWriteJson
 /// @param memberPtr メンバポインタ
 /// @param keyName JSONキー名
 /// @param skipValue 書き込み時の省略判定に使う値
@@ -371,7 +378,9 @@ constexpr auto getInitialOmittedField(MemberPtr memberPtr, const char* keyName,
     const MemberPointerValueType<MemberPtr>& skipValue) {
     using Value = MemberPointerValueType<MemberPtr>;
     const auto& converter = getConverter<Value>();
-    return getInitialOmittedField(memberPtr, keyName, skipValue, converter);
+    SingleValueFieldOmitBehavior<Value> behavior
+    { .defaultValue = skipValue };
+    return getField(memberPtr, keyName, converter, behavior);
 }
 
 /// @brief 読み込み時省略では何も行わず、書き込み時のみ指定値と等しい場合に省略するJsonFieldを返す。
@@ -382,19 +391,9 @@ constexpr auto getInitialOmittedField(MemberPtr memberPtr, const char* keyName,
 export template <typename MemberPtr, typename Converter>
 constexpr auto getInitialOmittedField(MemberPtr memberPtr, const char* keyName,
     const MemberPointerValueType<MemberPtr>& skipValue, const Converter& converter) {
-    using Value = MemberPointerValueType<MemberPtr>;
-    static_assert(IsSingleValueBehaviorAllowed<Value>,
-        "getInitialOmittedField requires IsSingleValueBehaviorAllowed");
-    static_assert(std::equality_comparable<Value>,
-        "getInitialOmittedField requires the member value to be equality comparable");
-    using ConverterBody = std::remove_cvref_t<Converter>;
-    static_assert(IsJsonConverter<ConverterBody, Value>,
-        "getInitialOmittedField requires Converter to satisfy IsJsonConverter");
-    using Behavior = SingleValueFieldOmitBehavior<Value>;
-    Behavior behavior{};
-    behavior.defaultValue = skipValue;
-    return JsonField<MemberPtr, ConverterBody, Behavior>(
-        memberPtr, keyName, std::cref(converter), behavior);
+    SingleValueFieldOmitBehavior<MemberPointerValueType<MemberPtr>> behavior
+    { .defaultValue = skipValue };
+    return getField(memberPtr, keyName, converter, behavior);
 }
 
 // ******************************************************************************** enum用返還方法
