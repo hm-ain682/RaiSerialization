@@ -22,6 +22,7 @@ import rai.collection.sorted_hash_array_map;
 #include <iomanip>
 #include <iostream>
 #include <cmath>
+#include <utility>
 
 using namespace rai::json;
 
@@ -46,10 +47,10 @@ struct SimpleData {
 
     const IJsonFieldSet& jsonFields() const {
         static const auto fields = makeJsonFieldSet<SimpleData>(
-            makeJsonField(&SimpleData::id, "id"),
-            makeJsonField(&SimpleData::value, "value"),
-            makeJsonField(&SimpleData::flag, "flag"),
-            makeJsonField(&SimpleData::name, "name")
+            getRequiredField(&SimpleData::id, "id"),
+            getRequiredField(&SimpleData::value, "value"),
+            getRequiredField(&SimpleData::flag, "flag"),
+            getRequiredField(&SimpleData::name, "name")
         );
         return fields;
     }
@@ -63,9 +64,9 @@ struct VectorData {
 
     const IJsonFieldSet& jsonFields() const {
         static const auto fields = makeJsonFieldSet<VectorData>(
-            makeJsonField(&VectorData::category, "category"),
-            makeJsonField(&VectorData::numbers, "numbers"),
-            makeJsonField(&VectorData::tags, "tags")
+            getRequiredField(&VectorData::category, "category"),
+            getRequiredField(&VectorData::numbers, "numbers"),
+            getRequiredField(&VectorData::tags, "tags")
         );
         return fields;
     }
@@ -80,8 +81,8 @@ struct BaseNode {
 
     virtual const IJsonFieldSet& jsonFields() const {
         static const auto fields = makeJsonFieldSet<BaseNode>(
-            makeJsonField(&BaseNode::type, "type"),
-            makeJsonField(&BaseNode::nodeId, "nodeId")
+            getRequiredField(&BaseNode::type, "type"),
+            getRequiredField(&BaseNode::nodeId, "nodeId")
         );
         return fields;
     }
@@ -93,9 +94,9 @@ struct DataNode : public BaseNode {
 
     const IJsonFieldSet& jsonFields() const override {
         static const auto fields = makeJsonFieldSet<DataNode>(
-            makeJsonField(&BaseNode::type, "type"),
-            makeJsonField(&BaseNode::nodeId, "nodeId"),
-            makeJsonField(&DataNode::dataValue, "dataValue")
+            getRequiredField(&BaseNode::type, "type"),
+            getRequiredField(&BaseNode::nodeId, "nodeId"),
+            getRequiredField(&DataNode::dataValue, "dataValue")
         );
         return fields;
     }
@@ -107,9 +108,9 @@ struct ContainerNode : public BaseNode {
 
     const IJsonFieldSet& jsonFields() const override {
         static const auto fields = makeJsonFieldSet<ContainerNode>(
-            makeJsonField(&BaseNode::type, "type"),
-            makeJsonField(&BaseNode::nodeId, "nodeId"),
-            makeJsonField(&ContainerNode::children, "children")
+            getRequiredField(&BaseNode::type, "type"),
+            getRequiredField(&BaseNode::nodeId, "nodeId"),
+            getRequiredField(&ContainerNode::children, "children")
         );
         return fields;
     }
@@ -140,11 +141,11 @@ struct ComplexData {
 
     const IJsonFieldSet& jsonFields() const {
         static const auto fields = makeJsonFieldSet<ComplexData>(
-            makeJsonField(&ComplexData::name, "name"),
-            makeJsonField(&ComplexData::level, "level"),
+            getRequiredField(&ComplexData::name, "name"),
+            getRequiredField(&ComplexData::level, "level"),
             makeJsonPolymorphicField(&ComplexData::node, "node", baseNodeEntriesMap),
-            makeJsonField(&ComplexData::items, "items"),
-            makeJsonField(&ComplexData::collections, "collections")
+            getRequiredField(&ComplexData::items, "items"),
+            getRequiredField(&ComplexData::collections, "collections")
         );
         return fields;
     }

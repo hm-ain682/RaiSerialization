@@ -14,6 +14,7 @@ import rai.collection.sorted_hash_array_map;
 #include <variant>
 #include <array>
 #include <set>
+#include <utility>
 
 using namespace rai::json;
 using namespace rai::json::test;
@@ -31,8 +32,8 @@ struct A {
     ///       makeJsonFieldSetを使用することで型名を簡潔に記述。
     virtual const IJsonFieldSet& jsonFields() const {
         static const auto fields = makeJsonFieldSet<A>(
-            makeJsonField(&A::w, "w"),
-            makeJsonField(&A::x, "x")
+            getRequiredField(&A::w, "w"),
+            getRequiredField(&A::x, "x")
         );
         return fields;
     }
@@ -48,8 +49,8 @@ struct B : public A {
     ///       makeJsonFieldSetを使用することで型名を簡潔に記述。
     const IJsonFieldSet& jsonFields() const override {
         static const auto fields = makeJsonFieldSet<B>(
-            makeJsonField(&A::w, "w"),
-            makeJsonField(&B::y, "y")
+            getRequiredField(&A::w, "w"),
+            getRequiredField(&B::y, "y")
         );
         return fields;
     }
@@ -65,8 +66,8 @@ struct C : public A {
     ///       makeJsonFieldSetを使用することで型名を簡潔に記述。
     const IJsonFieldSet& jsonFields() const override {
         static const auto fields = makeJsonFieldSet<C>(
-            makeJsonField(&A::w, "w"),
-            makeJsonField(&C::z, "z")
+            getRequiredField(&A::w, "w"),
+            getRequiredField(&C::z, "z")
         );
         return fields;
     }
@@ -95,7 +96,7 @@ struct POne : public PB {
 
     const IJsonFieldSet& jsonFields() const override {
         static const auto f = makeJsonFieldSet<POne>(
-            makeJsonField(&POne::x, "x")
+            getRequiredField(&POne::x, "x")
         );
         return f;
     }
@@ -111,7 +112,7 @@ struct PTwo : public PB {
 
     const IJsonFieldSet& jsonFields() const override {
         static const auto f = makeJsonFieldSet<PTwo>(
-            makeJsonField(&PTwo::s, "s")
+            getRequiredField(&PTwo::s, "s")
         );
         return f;
     }
@@ -176,8 +177,8 @@ struct DefaultFieldTest {
 
     const IJsonFieldSet& jsonFields() const {
         static const auto fields = makeJsonFieldSet<DefaultFieldTest>(
-            makeJsonField(&DefaultFieldTest::a, "a"),
-            makeJsonFieldWithDefault(&DefaultFieldTest::b, "b", 42)
+            getRequiredField(&DefaultFieldTest::a, "a"),
+            getDefaultOmittedField(&DefaultFieldTest::b, "b", 42)
         );
         return fields;
     }
@@ -189,8 +190,8 @@ struct SkipFieldTest {
 
     const IJsonFieldSet& jsonFields() const {
         static const auto fields = makeJsonFieldSet<SkipFieldTest>(
-            makeJsonField(&SkipFieldTest::a, "a"),
-            makeJsonFieldSkipIfEqual(&SkipFieldTest::b, "b", 0)
+            getRequiredField(&SkipFieldTest::a, "a"),
+            getInitialOmittedField(&SkipFieldTest::b, "b", 0)
         );
         return fields;
     }
@@ -265,14 +266,14 @@ struct IntegerTypes {
 
     const IJsonFieldSet& jsonFields() const {
         static const auto fields = makeJsonFieldSet<IntegerTypes>(
-            makeJsonField(&IntegerTypes::s, "s"),
-            makeJsonField(&IntegerTypes::us, "us"),
-            makeJsonField(&IntegerTypes::i, "i"),
-            makeJsonField(&IntegerTypes::ui, "ui"),
-            makeJsonField(&IntegerTypes::l, "l"),
-            makeJsonField(&IntegerTypes::ul, "ul"),
-            makeJsonField(&IntegerTypes::ll, "ll"),
-            makeJsonField(&IntegerTypes::ull, "ull")
+            getRequiredField(&IntegerTypes::s, "s"),
+            getRequiredField(&IntegerTypes::us, "us"),
+            getRequiredField(&IntegerTypes::i, "i"),
+            getRequiredField(&IntegerTypes::ui, "ui"),
+            getRequiredField(&IntegerTypes::l, "l"),
+            getRequiredField(&IntegerTypes::ul, "ul"),
+            getRequiredField(&IntegerTypes::ll, "ll"),
+            getRequiredField(&IntegerTypes::ull, "ull")
         );
         return fields;
     }
@@ -319,9 +320,9 @@ struct FloatingPointTypes {
 
     const IJsonFieldSet& jsonFields() const {
         static const auto fields = makeJsonFieldSet<FloatingPointTypes>(
-            makeJsonField(&FloatingPointTypes::f, "f"),
-            makeJsonField(&FloatingPointTypes::d, "d"),
-            makeJsonField(&FloatingPointTypes::ld, "ld")
+            getRequiredField(&FloatingPointTypes::f, "f"),
+            getRequiredField(&FloatingPointTypes::d, "d"),
+            getRequiredField(&FloatingPointTypes::ld, "ld")
         );
         return fields;
     }
@@ -360,13 +361,13 @@ struct CharacterTypes {
 
     const IJsonFieldSet& jsonFields() const {
         static const auto fields = makeJsonFieldSet<CharacterTypes>(
-            makeJsonField(&CharacterTypes::c, "c"),
-            makeJsonField(&CharacterTypes::sc, "sc"),
-            makeJsonField(&CharacterTypes::uc, "uc"),
-            makeJsonField(&CharacterTypes::c8, "c8"),
-            makeJsonField(&CharacterTypes::c16, "c16"),
-            makeJsonField(&CharacterTypes::c32, "c32"),
-            makeJsonField(&CharacterTypes::wc, "wc")
+            getRequiredField(&CharacterTypes::c, "c"),
+            getRequiredField(&CharacterTypes::sc, "sc"),
+            getRequiredField(&CharacterTypes::uc, "uc"),
+            getRequiredField(&CharacterTypes::c8, "c8"),
+            getRequiredField(&CharacterTypes::c16, "c16"),
+            getRequiredField(&CharacterTypes::c32, "c32"),
+            getRequiredField(&CharacterTypes::wc, "wc")
         );
         return fields;
     }
@@ -406,7 +407,7 @@ struct TestHolder {
 
     const IJsonFieldSet& jsonFields() const {
         static const auto fields = makeJsonFieldSet<TestHolder>(
-            makeJsonField(&TestHolder::c16, "c16")
+            getRequiredField(&TestHolder::c16, "c16")
         );
         return fields;
     }
@@ -443,8 +444,8 @@ struct NestedChild {
 
     const IJsonFieldSet& jsonFields() const {
         static const auto fields = makeJsonFieldSet<NestedChild>(
-            makeJsonField(&NestedChild::value, "value"),
-            makeJsonField(&NestedChild::name, "name")
+            getRequiredField(&NestedChild::value, "value"),
+            getRequiredField(&NestedChild::name, "name")
         );
         return fields;
     }
@@ -461,8 +462,8 @@ struct NestedParent {
 
     const IJsonFieldSet& jsonFields() const {
         static const auto fields = makeJsonFieldSet<NestedParent>(
-            makeJsonField(&NestedParent::child, "child"),
-            makeJsonField(&NestedParent::flag, "flag")
+            getRequiredField(&NestedParent::child, "child"),
+            getRequiredField(&NestedParent::flag, "flag")
         );
         return fields;
     }
@@ -749,8 +750,8 @@ struct Tag {
 
     const IJsonFieldSet& jsonFields() const {
         static const auto fields = makeJsonFieldSet<Tag>(
-            makeJsonField(&Tag::label, "label"),
-            makeJsonField(&Tag::priority, "priority")
+            getRequiredField(&Tag::label, "label"),
+            getRequiredField(&Tag::priority, "priority")
         );
         return fields;
     }
@@ -839,8 +840,8 @@ struct Point {
 
     const IJsonFieldSet& jsonFields() const {
         static const auto fields = makeJsonFieldSet<Point>(
-            makeJsonField(&Point::x, "x"),
-            makeJsonField(&Point::y, "y")
+            getRequiredField(&Point::x, "x"),
+            getRequiredField(&Point::y, "y")
         );
         return fields;
     }
@@ -888,7 +889,7 @@ struct RWElement {
 
     const IJsonFieldSet& jsonFields() const {
         static const auto fields = makeJsonFieldSet<RWElement>(
-            makeJsonField(&RWElement::x, "x")
+            getRequiredField(&RWElement::x, "x")
         );
         return fields;
     }

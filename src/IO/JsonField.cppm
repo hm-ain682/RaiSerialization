@@ -64,16 +64,6 @@ concept IsSingleValueBehaviorAllowed = std::is_copy_constructible_v<ValueType>
             && std::is_copy_assignable_v<std::remove_cvref_t<std::ranges::range_value_t<ValueType>>>))
     && (!IsUniquePtr<ValueType>);
 
-/// @brief DefaultFieldOmitBehavior を利用できるか判定するconcept。
-/// @tparam ValueType 対象型
-template <typename ValueType>
-concept IsDefaultFieldBehaviorAllowed = std::is_copy_constructible_v<ValueType>
-    && std::is_copy_assignable_v<ValueType>
-    && (!IsContainer<ValueType>
-        || (std::is_copy_constructible_v<std::remove_cvref_t<std::ranges::range_value_t<ValueType>>>
-            && std::is_copy_assignable_v<std::remove_cvref_t<std::ranges::range_value_t<ValueType>>>))
-    && (!IsUniquePtr<ValueType>);
-
 /// @brief JSONへの書き出しと読み込みを行うコンバータに要求される条件を定義する concept。
 /// @tparam Converter コンバータ型
 /// @tparam Value コンバータが扱う値の型
@@ -101,32 +91,29 @@ concept IsJsonFieldOmittedBehavior = requires(
     { behavior.applyMissing(outValue, key) } -> std::same_as<void>;
 };
 
-/// @brief JsonFieldの省略時挙動の既定実装。
+/// @brief 読み込み時省略では既定値を設定し、書き出し時既定値と一致するならスキップする省略時挙動。
 /// @tparam ValueType 値型
 export template <typename ValueType>
-struct DefaultFieldOmitBehavior {
-    static_assert(IsDefaultFieldBehaviorAllowed<ValueType>,
-        "DefaultFieldOmitBehavior requires copyable ValueType");
-    mutable std::optional<ValueType> defaultValue{};   ///< 既定値（任意）
-    std::optional<ValueType> skipWhenEqual{};  ///< この値と等しい場合は書き出し省略（任意）
+struct SingleValueFieldOmitBehavior {
+    static_assert(IsSingleValueBehaviorAllowed<ValueType>,
+        "SingleValueFieldOmitBehavior requires copyable ValueType");
+    static_assert(std::equality_comparable<ValueType>,
+        "SingleValueFieldOmitBehavior requires equality comparable ValueType");
+    ValueType defaultValue{};  ///< 省略判定と欠落時代入に使う値
 
     /// @brief 値が省略条件に一致するかを返す。
     /// @param value チェックする値
     /// @return 省略すべきなら true
     bool shouldSkipWrite(const ValueType& value) const {
-        if (skipWhenEqual) {
-            return value == *skipWhenEqual;
-        }
-        return false;
+        return value == defaultValue;
     }
 
     /// @brief 欠落時の挙動を適用する。
     /// @param outValue 欠落時に代入する対象
     /// @param key 対象キー名
     void applyMissing(ValueType& outValue, std::string_view key) const {
-        if (defaultValue) {
-            outValue = *defaultValue;
-        }
+        (void)key;
+        outValue = defaultValue;
     }
 };
 
@@ -151,33 +138,7 @@ struct NoDefaultFieldOmitBehavior {
     }
 };
 
-/// @brief JsonFieldの省略時挙動（単一値）を提供する実装。
-/// @tparam ValueType 値型
-export template <typename ValueType>
-struct SingleValueFieldOmitBehavior {
-    static_assert(IsSingleValueBehaviorAllowed<ValueType>,
-        "SingleValueFieldOmitBehavior requires copyable ValueType");
-    static_assert(std::equality_comparable<ValueType>,
-        "SingleValueFieldOmitBehavior requires equality comparable ValueType");
-    ValueType storedValue_{};  ///< 省略判定と欠落時代入に使う値
-
-    /// @brief 値が省略条件に一致するかを返す。
-    /// @param value チェックする値
-    /// @return 省略すべきなら true
-    bool shouldSkipWrite(const ValueType& value) const {
-        return value == storedValue_;
-    }
-
-    /// @brief 欠落時の挙動を適用する。
-    /// @param outValue 欠落時に代入する対象
-    /// @param key 対象キー名
-    void applyMissing(ValueType& outValue, std::string_view key) const {
-        (void)key;
-        outValue = storedValue_;
-    }
-};
-
-/// @brief JsonFieldの必須時挙動の実装。
+/// @brief 読み込み時省略では例外を送出し、常時書き出しす省略時挙動。
 /// @tparam ValueType 値型
 export template <typename ValueType>
 struct RequiredFieldOmitBehavior {
@@ -203,13 +164,7 @@ struct RequiredFieldOmitBehavior {
 // ******************************************************************************** フィールド
 
 /// @brief メンバー変数とJSON項目を対応付ける。
-export template <
-    typename MemberPtrType,
-    typename Converter,
-    typename OmittedBehavior = std::conditional_t<
-        IsDefaultFieldBehaviorAllowed<MemberPointerValueType<MemberPtrType>>,
-        DefaultFieldOmitBehavior<MemberPointerValueType<MemberPtrType>>,
-        NoDefaultFieldOmitBehavior<MemberPointerValueType<MemberPtrType>>>>
+export template <typename MemberPtrType, typename Converter, typename OmittedBehavior>
 struct JsonField {
     static_assert(std::is_member_object_pointer_v<MemberPtrType>,
         "JsonField requires MemberPtrType to be a member object pointer");
@@ -228,38 +183,38 @@ struct JsonField {
     /// @param behavior 省略時挙動
     constexpr explicit JsonField(MemberPtrType memberPtr, const char* keyName,
         std::reference_wrapper<const Converter> conv, OmittedBehavior behavior)
-        : member(memberPtr), converterRef(conv), key(keyName),
-          omittedBehavior(std::move(behavior)) {}
+        : member(memberPtr), converter_(conv), key(keyName),
+          omittedBehavior_(std::move(behavior)) {}
 
     /// @brief JSON から値を読み取る。
     /// @param parser 読み取り元の JsonParser
     /// @return 変換された値
     ValueType read(JsonParser& parser) const {
-        return converterRef.get().read(parser);
+        return converter_.get().read(parser);
     }
 
     /// @brief JSON項目（キーと値）を書き出す。
     /// @param writer 書き込み先の JsonWriter
     /// @param value 書き込む値
     void writeKeyValue(JsonWriter& writer, const ValueType& value) const {
-        if (omittedBehavior.shouldSkipWrite(value)) {
+        if (omittedBehavior_.shouldSkipWrite(value)) {
             return;
         }
         writer.key(key);
-        converterRef.get().write(writer, value);
+        converter_.get().write(writer, value);
     }
 
     /// @brief 欠落時の挙動を適用する。
     /// @param outValue 欠落時に代入する対象
     void applyMissing(ValueType& outValue) const {
-        omittedBehavior.applyMissing(outValue, key);
+        omittedBehavior_.applyMissing(outValue, key);
     }
 
     MemberPtrType member{};                               ///< メンバポインタ
-    std::reference_wrapper<const Converter> converterRef; ///< 値変換器への参照（必ず有効であること）
     const char* key{};                                    ///< JSONキー名
-    OmittedBehavior omittedBehavior{};                    ///< 省略時挙動
-
+private:
+    std::reference_wrapper<const Converter> converter_;  ///< 値変換器への参照（必ず有効であること）
+    OmittedBehavior omittedBehavior_{};                  ///< 省略時挙動
 };
 
 /// @brief JsonField の型推論ガイド（reference_wrapper + 省略時挙動）。
@@ -311,9 +266,9 @@ struct JsonFieldsConverter {
 
 /// @brief writeJson/readJson を持つ型のコンバータ
 export template <typename T>
-struct WriteReadJsonConverter {
+struct ReadWriteJsonConverter {
     static_assert(HasReadJson<T> && HasWriteJson<T> && std::default_initializable<T>,
-        "WriteReadJsonConverter requires T to have readJson/writeJson and be default-initializable");
+        "ReadWriteJsonConverter requires T to have readJson/writeJson and be default-initializable");
     using Value = T; 
     void write(JsonWriter& writer, const T& obj) const {
         obj.writeJson(writer);
@@ -338,7 +293,7 @@ constexpr auto& getConverter() {
         return inst;
     }
     else if constexpr (HasReadJson<T> && HasWriteJson<T>) {
-        static const WriteReadJsonConverter<T> inst{};
+        static const ReadWriteJsonConverter<T> inst{};
         return inst;
     }
     else {
@@ -347,64 +302,100 @@ constexpr auto& getConverter() {
     }
 }
 
-/// @brief 与えられた MemberPtrType の値型（以下）に対するコンバータを構築します
+/// @brief 項目必須のJsonFieldを作って返す。
+///        与えられた MemberPtrType の値型（以下）に対するコンバータを使用する。
 ///        基本型、HasJsonFields、HasReadJson/HasWriteJson
+/// @param memberPtr メンバポインタ
+/// @param keyName JSONキー名
 export template <typename MemberPtrType>
-constexpr auto makeJsonField(MemberPtrType memberPtr, const char* keyName) {
+constexpr auto getRequiredField(MemberPtrType memberPtr, const char* keyName) {
     using ValueT = MemberPointerValueType<MemberPtrType>;
-    const auto& conv = getConverter<ValueT>();
-    using ConvT = std::remove_cvref_t<decltype(conv)>;
-    using BehaviorType = RequiredFieldOmitBehavior<ValueT>;
-    return JsonField<MemberPtrType, ConvT, BehaviorType>(
-        memberPtr, keyName, std::cref(conv), BehaviorType{});
-}  
-
-/// @brief キーが無い場合に既定値を設定する JsonField を作成する。
-export template <typename MemberPtrType>
-constexpr auto makeJsonFieldWithDefault(MemberPtrType memberPtr, const char* keyName,
-    MemberPointerValueType<MemberPtrType> defaultValue) {
-    using ValueT = MemberPointerValueType<MemberPtrType>;
-    const auto& conv = getConverter<ValueT>();
-    using ConvT = std::remove_cvref_t<decltype(conv)>;
-    static_assert(std::is_copy_constructible_v<ValueT>
-            && std::is_copy_assignable_v<ValueT>,
-        "makeJsonFieldWithDefault requires copyable ValueType");
-    using BehaviorType = std::conditional_t<IsSingleValueBehaviorAllowed<ValueT>,
-        SingleValueFieldOmitBehavior<ValueT>, DefaultFieldOmitBehavior<ValueT>>;
-    BehaviorType behavior{};
-    if constexpr (std::same_as<BehaviorType, SingleValueFieldOmitBehavior<ValueT>>) {
-        behavior.storedValue_ = std::move(defaultValue);
-    }
-    else {
-        behavior.defaultValue = std::move(defaultValue);
-    }
-    return JsonField<MemberPtrType, ConvT, BehaviorType>(
-        memberPtr, keyName, std::cref(conv), behavior);
+    const auto& converter = getConverter<ValueT>();
+    return getRequiredField(memberPtr, keyName, converter);
 }
 
-/// @brief 指定した値と等しい場合に書き出しを省略する JsonField を作成する。
+/// @brief 項目必須のJsonFieldを作って返す（コンバータ指定版）。
+/// @param memberPtr メンバポインタ
+/// @param keyName JSONキー名
+/// @param converter 値型に対応するコンバータ
+export template <typename MemberPtrType, typename Converter>
+constexpr auto getRequiredField(MemberPtrType memberPtr, const char* keyName,
+    const Converter& converter) {
+    using ValueT = MemberPointerValueType<MemberPtrType>;
+    using ConvT = std::remove_cvref_t<Converter>;
+    static_assert(IsJsonConverter<ConvT, ValueT>,
+        "getRequiredField requires Converter to satisfy IsJsonConverter");
+    using BehaviorType = RequiredFieldOmitBehavior<ValueT>;
+    return JsonField<MemberPtrType, ConvT, BehaviorType>(
+        memberPtr, keyName, std::cref(converter), BehaviorType{});
+}
+
+/// @brief 読み込み時省略では既定値を代入し、書き込み時は既定値と等しい場合に省略するJsonFieldを返す。
+/// @param memberPtr メンバポインタ
+/// @param keyName JSONキー名
+/// @param defaultValue 欠落時に代入し、書き込み時の省略判定に使う値
 export template <typename MemberPtrType>
-constexpr auto makeJsonFieldSkipIfEqual(MemberPtrType memberPtr, const char* keyName,
+constexpr auto getDefaultOmittedField(MemberPtrType memberPtr, const char* keyName,
+    MemberPointerValueType<MemberPtrType> defaultValue) {
+    using ValueT = MemberPointerValueType<MemberPtrType>;
+    const auto& converter = getConverter<ValueT>();
+    return getDefaultOmittedField(memberPtr, keyName, std::move(defaultValue), converter);
+}
+
+/// @brief 読み込み時省略では既定値を代入し、書き込み時は既定値と等しい場合に省略するJsonFieldを返す。
+/// @param memberPtr メンバポインタ
+/// @param keyName JSONキー名
+/// @param defaultValue 欠落時に代入し、書き込み時の省略判定に使う値
+/// @param converter 値型に対応するコンバータ
+export template <typename MemberPtrType, typename Converter>
+constexpr auto getDefaultOmittedField(MemberPtrType memberPtr, const char* keyName,
+    MemberPointerValueType<MemberPtrType> defaultValue, const Converter& converter) {
+    using ValueT = MemberPointerValueType<MemberPtrType>;
+    static_assert(IsSingleValueBehaviorAllowed<ValueT>,
+        "getDefaultOmittedField requires IsSingleValueBehaviorAllowed");
+    using ConvT = std::remove_cvref_t<Converter>;
+    static_assert(IsJsonConverter<ConvT, ValueT>,
+        "getDefaultOmittedField requires Converter to satisfy IsJsonConverter");
+    using BehaviorType = SingleValueFieldOmitBehavior<ValueT>;
+    BehaviorType behavior{};
+    behavior.defaultValue = std::move(defaultValue);
+    return JsonField<MemberPtrType, ConvT, BehaviorType>(
+        memberPtr, keyName, std::cref(converter), behavior);
+}
+
+/// @brief 読み込み時省略では何も行わず、書き込み時のみ指定値と等しい場合に省略するJsonFieldを返す。
+/// @param memberPtr メンバポインタ
+/// @param keyName JSONキー名
+/// @param skipValue 書き込み時の省略判定に使う値
+export template <typename MemberPtrType>
+constexpr auto getInitialOmittedField(MemberPtrType memberPtr, const char* keyName,
     const MemberPointerValueType<MemberPtrType>& skipValue) {
     using ValueT = MemberPointerValueType<MemberPtrType>;
+    const auto& converter = getConverter<ValueT>();
+    return getInitialOmittedField(memberPtr, keyName, skipValue, converter);
+}
+
+/// @brief 読み込み時省略では何も行わず、書き込み時のみ指定値と等しい場合に省略するJsonFieldを返す。
+/// @param memberPtr メンバポインタ
+/// @param keyName JSONキー名
+/// @param skipValue 書き込み時の省略判定に使う値
+/// @param converter 値型に対応するコンバータ
+export template <typename MemberPtrType, typename Converter>
+constexpr auto getInitialOmittedField(MemberPtrType memberPtr, const char* keyName,
+    const MemberPointerValueType<MemberPtrType>& skipValue, const Converter& converter) {
+    using ValueT = MemberPointerValueType<MemberPtrType>;
+    static_assert(IsSingleValueBehaviorAllowed<ValueT>,
+        "getInitialOmittedField requires IsSingleValueBehaviorAllowed");
     static_assert(std::equality_comparable<ValueT>,
-        "makeJsonFieldSkipIfEqual requires the member value to be equality comparable");
-    const auto& conv = getConverter<ValueT>();
-    using ConvT = std::remove_cvref_t<decltype(conv)>;
-    static_assert(std::is_copy_constructible_v<ValueT>
-            && std::is_copy_assignable_v<ValueT>,
-        "makeJsonFieldSkipIfEqual requires copyable ValueType");
-    using BehaviorType = std::conditional_t<IsSingleValueBehaviorAllowed<ValueT>,
-        SingleValueFieldOmitBehavior<ValueT>, DefaultFieldOmitBehavior<ValueT>>;
+        "getInitialOmittedField requires the member value to be equality comparable");
+    using ConvT = std::remove_cvref_t<Converter>;
+    static_assert(IsJsonConverter<ConvT, ValueT>,
+        "getInitialOmittedField requires Converter to satisfy IsJsonConverter");
+    using BehaviorType = SingleValueFieldOmitBehavior<ValueT>;
     BehaviorType behavior{};
-    if constexpr (std::same_as<BehaviorType, SingleValueFieldOmitBehavior<ValueT>>) {
-        behavior.storedValue_ = skipValue;
-    }
-    else {
-        behavior.skipWhenEqual = skipValue;
-    }
+    behavior.defaultValue = skipValue;
     return JsonField<MemberPtrType, ConvT, BehaviorType>(
-        memberPtr, keyName, std::cref(conv), behavior);
+        memberPtr, keyName, std::cref(converter), behavior);
 }
 
 // ******************************************************************************** enum用返還方法
