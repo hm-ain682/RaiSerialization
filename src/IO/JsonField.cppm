@@ -398,9 +398,9 @@ constexpr auto getInitialOmittedField(MemberPtr memberPtr, const char* keyName,
 
 // ******************************************************************************** enum用返還方法
 
-// JsonEnumMapのように、enum <-> 文字列名の双方向マップを提供する型のconcept。
+// EnumTextMapのように、enum <-> 文字列名の双方向マップを提供する型のconcept。
 export template <typename Map>
-concept IsJsonEnumMap
+concept IsEnumTextMap
     = requires { typename Map::Enum; }
     && std::is_enum_v<typename Map::Enum>
     && requires(const Map& m, std::string_view s, typename Map::Enum v) {
@@ -419,13 +419,13 @@ struct EnumEntry {
 /// @tparam EnumType enum 型
 /// @tparam N エントリ数（静的）
 export template <typename EnumType, std::size_t N>
-struct JsonEnumMap {
+struct EnumTextMap {
     using Enum = EnumType;
 
     /// @brief std::span ベースのコンストラクタ（C配列やstd::arrayからの変換を受け取ります）
-    constexpr explicit JsonEnumMap(std::span<const EnumEntry<Enum>> entries) {
+    constexpr explicit EnumTextMap(std::span<const EnumEntry<Enum>> entries) {
         if (entries.size() != N) {
-            throw std::runtime_error("JsonEnumMap(span): size must match template parameter N");
+            throw std::runtime_error("EnumTextMap(span): size must match template parameter N");
         }
         std::pair<std::string_view, Enum> nv[N];
         for (std::size_t i = 0; i < N; ++i) {
@@ -464,11 +464,11 @@ private:
 };
 
 /// @brief 列挙型用のコンバータ
-/// @tparam MapType JsonEnumMap型など
+/// @tparam MapType EnumTextMap型など
 export template <typename MapType>
 struct EnumConverter {
-    static_assert(IsJsonEnumMap<MapType>,
-        "EnumConverter requires MapType to satisfy IsJsonEnumMap");
+    static_assert(IsEnumTextMap<MapType>,
+        "EnumConverter requires MapType to satisfy IsEnumTextMap");
     using Enum = typename MapType::Enum; 
     using Value = Enum;
     constexpr explicit EnumConverter(const MapType& map)
@@ -491,33 +491,36 @@ struct EnumConverter {
         throw std::runtime_error(std::string("Failed to convert string to enum: ") + jsonValue);
     }
 private:
-    MapType map_{};
+    MapType map_;
 };
 
-/// @brief C 配列から JsonEnumMap を構築する。
+/// @brief C 配列から EnumConverter を構築する。
 export template <typename Enum, std::size_t N>
-constexpr auto makeJsonEnumMap(const EnumEntry<Enum> (&entries)[N]) {
-    return JsonEnumMap<Enum, N>(std::span<const EnumEntry<Enum>, N>(entries));
+constexpr auto getEnumConverter(const EnumEntry<Enum> (&entries)[N]) {
+    const EnumTextMap<Enum, N> map{ std::span<const EnumEntry<Enum>, N>(entries) };
+    return EnumConverter<EnumTextMap<Enum, N>>(map);
 }
 
-/// @brief array から JsonEnumMap を構築する。
+/// @brief array から EnumConverter を構築する。
 export template <typename Enum, std::size_t M>
-constexpr auto makeJsonEnumMap(const std::array<EnumEntry<Enum>, M>& entries) {
-    return JsonEnumMap<Enum, M>(std::span<const EnumEntry<Enum>, M>(entries.data(), M));
+constexpr auto getEnumConverter(const std::array<EnumEntry<Enum>, M>& entries) {
+    const EnumTextMap<Enum, M> map{ std::span<const EnumEntry<Enum>, M>(entries.data(), M) };
+    return EnumConverter<EnumTextMap<Enum, M>>(map);
 }
 
-/// @brief spanから JsonEnumMap を構築する。
+/// @brief spanから EnumConverter を構築する。
 export template <typename Enum, std::size_t N>
-constexpr auto makeJsonEnumMap(std::span<const EnumEntry<Enum>, N> entries) {
-    return JsonEnumMap<Enum, N>(entries);
+constexpr auto getEnumConverter(std::span<const EnumEntry<Enum>, N> entries) {
+    const EnumTextMap<Enum, N> map{ entries };
+    return EnumConverter<EnumTextMap<Enum, N>>(map);
 }
 
-/// @brief 列挙型メンバに対する `JsonField` を作成する（`JsonEnumMap` を渡す版）。
+/// @brief 列挙型メンバに対する `JsonField` を作成する（`EnumTextMap` を渡す版）。
 export template <typename MemberPtr, typename MapType>
 constexpr auto makeJsonEnumField(MemberPtr memberPtr, const char* keyName,
     const MapType& map) {
-    static_assert(IsJsonEnumMap<MapType>,
-        "makeJsonEnumField requires MapType to satisfy IsJsonEnumMap");
+    static_assert(IsEnumTextMap<MapType>,
+        "makeJsonEnumField requires MapType to satisfy IsEnumTextMap");
     static_assert(std::same_as<typename MapType::Enum, MemberPointerValueType<MemberPtr>>,
         "MapType::Enum must match the member's value type");
     static const EnumConverter<MapType> conv(map);
@@ -531,8 +534,8 @@ constexpr auto makeJsonEnumField(MemberPtr memberPtr, const char* keyName,
 export template <typename MemberPtr, typename MapType>
 constexpr auto makeJsonEnumField(MemberPtr memberPtr, const char* keyName,
     const EnumConverter<MapType>& conv) {
-    static_assert(IsJsonEnumMap<MapType>,
-        "makeJsonEnumField requires MapType to satisfy IsJsonEnumMap");
+    static_assert(IsEnumTextMap<MapType>,
+        "makeJsonEnumField requires MapType to satisfy IsEnumTextMap");
     static_assert(std::same_as<typename MapType::Enum, MemberPointerValueType<MemberPtr>>,
         "MapType::Enum must match the member's value type");
     using Value = MemberPointerValueType<MemberPtr>;

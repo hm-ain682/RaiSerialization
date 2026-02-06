@@ -1045,16 +1045,15 @@ TEST(JsonElementConverterExplicitTest, ContainerOfEnumWithExplicitContainerConve
 {
     enum class Color { Red, Blue };
     constexpr EnumEntry<Color> entries[] = {{Color::Red, "Red"}, {Color::Blue, "Blue"}};
-    using MapType = JsonEnumMap<Color, 2>;
-    static const MapType cmap = makeJsonEnumMap(entries);
+    static const auto enumConverter = getEnumConverter(entries);
 
     struct Holder {
         std::vector<Color> v;
         const IJsonFieldSet& jsonFields() const {
-            static const EnumConverter<MapType> econv(cmap);
-            static const ContainerConverter<std::vector<Color>, EnumConverter<MapType>> conv(econv);
+            static const ContainerConverter<std::vector<Color>, decltype(enumConverter)>
+                containerConverter(enumConverter);
             static const auto fields = makeJsonFieldSet<Holder>(
-                makeJsonContainerField(&Holder::v, "v", conv)
+                makeJsonContainerField(&Holder::v, "v", containerConverter)
             );
             return fields;
         }
