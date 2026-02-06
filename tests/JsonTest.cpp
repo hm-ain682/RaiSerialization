@@ -500,10 +500,12 @@ struct PointerHolder {
             // Provide explicit element/container converter for vector of unique_ptr<string>
             using Element = std::unique_ptr<std::string>;
             auto& elementConverter = getUniquePtrConverter<Element>();
+            static const auto uniquePtrConverter =
+                getUniquePtrConverter<decltype(ptr)>();
             static const auto containerConverter =
                 getContainerConverter<decltype(ptrVec)>(elementConverter);
             static const auto fields = makeJsonFieldSet<PointerHolder>(
-                makeJsonUniquePtrField(&PointerHolder::ptr, "ptr"),
+                getRequiredField(&PointerHolder::ptr, "ptr", uniquePtrConverter),
                 getRequiredField(&PointerHolder::ptrVec, "ptrVec", containerConverter)
             );
             return fields;
@@ -937,8 +939,10 @@ TEST(JsonElementConverterTest, UniquePtrUsesElementConverter)
     struct Holder {
         std::unique_ptr<RWElement> item;
         const IJsonFieldSet& jsonFields() const {
+            static const auto uniquePtrConverter =
+                getUniquePtrConverter<decltype(item)>();
             static const auto fields = makeJsonFieldSet<Holder>(
-                makeJsonUniquePtrField(&Holder::item, "item")
+                getRequiredField(&Holder::item, "item", uniquePtrConverter)
             );
             return fields;
         }
