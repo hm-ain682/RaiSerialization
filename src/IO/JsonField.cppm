@@ -577,43 +577,24 @@ private:
     std::reference_wrapper<const ElementConverterT> elemConvRef_{};
 };
 
-/// @brief 配列形式のJSONを読み書きする汎用フィールド。
-/// @tparam MemberPtr コンテナ型のメンバー変数へのポインタ。
-/// @details push_back または insert を持つコンテナに対応する。
-// JsonContainerField helper: construct a ContainerConverter for the container element if available
-export template <typename MemberPtr>
-constexpr auto makeJsonContainerField(MemberPtr memberPtr, const char* keyName) {
-    using Container = MemberPointerValueType<MemberPtr>;
-    static_assert(IsContainer<Container>,
-        "makeJsonContainerField: member is not a container type");
+/// @brief コンテナ型に対応する既定の `ContainerConverter` を作成する。
+/// @tparam Container コンテナ型
+export template <typename Container>
+constexpr auto getContainerConverter() {
     using Elem = std::remove_cvref_t<std::ranges::range_value_t<Container>>;
-    const auto& elemConvInstance = getConverter<Elem>();
-    using ElemConv = std::remove_cvref_t<decltype(elemConvInstance)>;
-    static const ContainerConverter<Container, ElemConv> conv(elemConvInstance);
-    using ConverterBody = std::remove_cvref_t<decltype(conv)>;
-    using Behavior = RequiredFieldOmitBehavior<Container>;
-    return JsonField<MemberPtr, ConverterBody, Behavior>(
-        memberPtr, keyName, std::cref(conv), Behavior{});
-} 
-
-/// @brief 明示的な `ContainerConverter` を渡して `JsonField` を作成するオーバーロード。
-export template <typename MemberPtr, typename Container, typename ElemConv>
-constexpr auto makeJsonContainerField(MemberPtr memberPtr, const char* keyName,
-    const ContainerConverter<Container, ElemConv>& conv) {
-    static_assert(std::is_member_object_pointer_v<MemberPtr>,
-        "makeJsonContainerField requires MemberPtr to be a member object pointer");
-    static_assert(std::same_as<MemberPointerValueType<MemberPtr>, Container>,
-        "Member pointer value must match Container");
-    static_assert(IsContainer<Container>,
-        "makeJsonContainerField requires Container to be a container type");
-    static_assert(IsJsonConverter<ElemConv, std::remove_cvref_t<std::ranges::range_value_t<Container>>>,
-        "ElemConv must be a JsonConverter for the container element type");
-    using ConverterBody = std::remove_cvref_t<ContainerConverter<Container, ElemConv>>;
-    using Behavior = RequiredFieldOmitBehavior<Container>;
-    return JsonField<MemberPtr, ConverterBody, Behavior>(
-        memberPtr, keyName, std::cref(conv), Behavior{});
+    const auto& elementConverter = getConverter<Elem>();
+    using ElemConv = std::remove_cvref_t<decltype(elementConverter)>;
+    return ContainerConverter<Container, ElemConv>(elementConverter);
 }
 
+/// @brief 明示的な要素コンバータから `ContainerConverter` を作成する。
+/// @tparam Container コンテナ型
+/// @tparam ElementConverter 要素コンバータ型
+/// @param elemConv 要素コンバータ
+export template <typename Container, typename ElementConverter>
+constexpr auto getContainerConverter(const ElementConverter& elemConv) {
+    return ContainerConverter<Container, ElementConverter>(elemConv);
+}
 
 // ******************************************************************************** unique_ptr用変換方法
 

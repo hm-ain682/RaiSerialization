@@ -499,12 +499,12 @@ struct PointerHolder {
     const IJsonFieldSet& jsonFields() const {
             // Provide explicit element/container converter for vector of unique_ptr<string>
             using Element = std::unique_ptr<std::string>;
-            auto& elemConv = getUniquePtrConverter<Element>();
-            static const ContainerConverter<std::vector<Element>, std::remove_cvref_t<decltype(elemConv)>>
-                containerConverter;
+            auto& elementConverter = getUniquePtrConverter<Element>();
+            static const auto containerConverter =
+                getContainerConverter<decltype(ptrVec)>(elementConverter);
             static const auto fields = makeJsonFieldSet<PointerHolder>(
                 makeJsonUniquePtrField(&PointerHolder::ptr, "ptr"),
-                makeJsonContainerField(&PointerHolder::ptrVec, "ptrVec", containerConverter)
+                getRequiredField(&PointerHolder::ptrVec, "ptrVec", containerConverter)
             );
             return fields;
     }
@@ -769,8 +769,10 @@ struct SetFieldVectorHolder {
     std::vector<Tag> tags;
 
     const IJsonFieldSet& jsonFields() const {
+        static const auto containerConverter =
+            getContainerConverter<decltype(tags)>();
         static const auto fields = makeJsonFieldSet<SetFieldVectorHolder>(
-            makeJsonContainerField(&SetFieldVectorHolder::tags, "tags")
+            getRequiredField(&SetFieldVectorHolder::tags, "tags", containerConverter)
         );
         return fields;
     }
@@ -804,8 +806,10 @@ struct SetFieldSetHolder {
     std::set<std::string> tags;
 
     const IJsonFieldSet& jsonFields() const {
+        static const auto containerConverter =
+            getContainerConverter<decltype(tags)>();
         static const auto fields = makeJsonFieldSet<SetFieldSetHolder>(
-            makeJsonContainerField(&SetFieldSetHolder::tags, "tags")
+            getRequiredField(&SetFieldSetHolder::tags, "tags", containerConverter)
         );
         return fields;
     }
@@ -859,8 +863,10 @@ struct SetFieldObjectHolder {
     std::vector<Point> points;
 
     const IJsonFieldSet& jsonFields() const {
+        static const auto containerConverter =
+            getContainerConverter<decltype(points)>();
         static const auto fields = makeJsonFieldSet<SetFieldObjectHolder>(
-            makeJsonContainerField(&SetFieldObjectHolder::points, "points")
+            getRequiredField(&SetFieldObjectHolder::points, "points", containerConverter)
         );
         return fields;
     }
@@ -894,7 +900,9 @@ struct RWElement {
         return fields;
     }
 
-    bool operator==(const RWElement& other) const { return x == other.x; }
+    bool operator==(const RWElement& other) const {
+        return x == other.x;
+    }
 };
 
 TEST(JsonElementConverterTest, ContainerUsesElementConverter)
@@ -902,13 +910,19 @@ TEST(JsonElementConverterTest, ContainerUsesElementConverter)
     struct Holder {
         std::vector<RWElement> v;
         const IJsonFieldSet& jsonFields() const {
+            static const auto containerConverter =
+                getContainerConverter<decltype(v)>();
             static const auto fields = makeJsonFieldSet<Holder>(
-                makeJsonContainerField(&Holder::v, "v")
+                getRequiredField(&Holder::v, "v", containerConverter)
             );
             return fields;
         }
-        bool operator==(const Holder& other) const { return v == other.v; }
-        bool equals(const Holder& other) const { return *this == other; }
+        bool operator==(const Holder& other) const {
+            return v == other.v;
+        }
+        bool equals(const Holder& other) const {
+            return *this == other;
+        }
     };
 
     Holder original;
@@ -934,7 +948,9 @@ TEST(JsonElementConverterTest, UniquePtrUsesElementConverter)
             }
             return *item == *other.item;
         }
-        bool equals(const Holder& other) const { return *this == other; }
+        bool equals(const Holder& other) const {
+            return *this == other;
+        }
     };
 
     Holder original;
@@ -956,7 +972,9 @@ TEST(JsonElementConverterTest, VariantUsesElementConverter)
         bool operator==(const Holder& other) const {
             return v == other.v;
         }
-        bool equals(const Holder& other) const { return *this == other; }
+        bool equals(const Holder& other) const {
+            return *this == other;
+        }
     };
 
     Holder original;
@@ -1000,8 +1018,12 @@ TEST(JsonElementConverterTest, VariantElementConverterDerivedCustomizesString)
             );
             return fields;
         }
-        bool operator==(const Holder& other) const { return v == other.v; }
-        bool equals(const Holder& other) const { return *this == other; }
+        bool operator==(const Holder& other) const {
+            return v == other.v;
+        }
+        bool equals(const Holder& other) const {
+            return *this == other;
+        }
     };
 
     // String alternative is written with prefix
@@ -1020,20 +1042,23 @@ TEST(JsonElementConverterTest, NestedContainerUsesElementConverter)
     struct Holder {
         std::vector<std::vector<RWElement>> v;
         const IJsonFieldSet& jsonFields() const {
-            // Explicitly construct nested container converter: inner element -> JsonFieldsConverter<RWElement>
-            using Converter = JsonFieldsConverter<RWElement>;
-            static const Converter innerElemConv{};
+            static const JsonFieldsConverter<RWElement> innerElemConv{};
             using RWElementVector = std::vector<RWElement>;
-            static const ContainerConverter<RWElementVector, Converter> innerConv(innerElemConv);
-            static const ContainerConverter<std::vector<RWElementVector>, decltype(innerConv)>
-                conv(innerConv);
+            static const auto innerConverter =
+                getContainerConverter<RWElementVector>(innerElemConv);
+            static const auto containerConverter =
+                getContainerConverter<decltype(v)>(innerConverter);
             static const auto fields = makeJsonFieldSet<Holder>(
-                makeJsonContainerField(&Holder::v, "v", conv)
+                getRequiredField(&Holder::v, "v", containerConverter)
             );
             return fields;
         }
-        bool operator==(const Holder& other) const { return v == other.v; }
-        bool equals(const Holder& other) const { return *this == other; }
+        bool operator==(const Holder& other) const {
+            return v == other.v;
+        }
+        bool equals(const Holder& other) const {
+            return *this == other;
+        }
     };
 
     Holder original;
@@ -1050,15 +1075,19 @@ TEST(JsonElementConverterExplicitTest, ContainerOfEnumWithExplicitContainerConve
     struct Holder {
         std::vector<Color> v;
         const IJsonFieldSet& jsonFields() const {
-            static const ContainerConverter<std::vector<Color>, decltype(enumConverter)>
-                containerConverter(enumConverter);
+            static const auto containerConverter =
+                getContainerConverter<decltype(v)>(enumConverter);
             static const auto fields = makeJsonFieldSet<Holder>(
-                makeJsonContainerField(&Holder::v, "v", containerConverter)
+                getRequiredField(&Holder::v, "v", containerConverter)
             );
             return fields;
         }
-        bool operator==(const Holder& other) const { return v == other.v; }
-        bool equals(const Holder& other) const { return *this == other; }
+        bool operator==(const Holder& other) const {
+            return v == other.v;
+        }
+        bool equals(const Holder& other) const {
+            return *this == other;
+        }
     };
 
     Holder original;
@@ -1071,16 +1100,20 @@ TEST(JsonElementConverterExplicitTest, ContainerWithExplicitElementConverter)
     struct Holder {
         std::vector<RWElement> v;
         const IJsonFieldSet& jsonFields() const {
-            // Provide an explicit container converter instance (use ContainerConverter to avoid copying element converters)
-            static const JsonFieldsConverter<RWElement> elemConv{};
-            static const ContainerConverter<std::vector<RWElement>, JsonFieldsConverter<RWElement>> conv(elemConv);
+            static const JsonFieldsConverter<RWElement> elementConverter{};
+            static const auto containerConverter =
+                getContainerConverter<decltype(v)>(elementConverter);
             static const auto fields = makeJsonFieldSet<Holder>(
-                makeJsonContainerField(&Holder::v, "v", conv)
+                getRequiredField(&Holder::v, "v", containerConverter)
             );
             return fields;
         }
-        bool operator==(const Holder& other) const { return v == other.v; }
-        bool equals(const Holder& other) const { return *this == other; }
+        bool operator==(const Holder& other) const {
+            return v == other.v;
+        }
+        bool equals(const Holder& other) const {
+            return *this == other;
+        }
     };
 
     Holder original;
