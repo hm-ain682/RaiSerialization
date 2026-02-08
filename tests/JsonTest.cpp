@@ -610,7 +610,7 @@ struct TokenDispatchHolder {
         auto tokenConv = FromConv();
         static const TokenDispatchConverter<DispatchValue, FromConv> conv(tokenConv);
         static const auto fields = makeJsonFieldSet<TokenDispatchHolder>(
-            makeJsonTokenDispatchField(&TokenDispatchHolder::value, "value", conv)
+            getRequiredField(&TokenDispatchHolder::value, "value", conv)
         );
         return fields;
     }

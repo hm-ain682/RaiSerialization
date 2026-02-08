@@ -8,6 +8,7 @@ import rai.json.json_tokenizer;
 import rai.json.json_token_manager;
 import rai.json.json_field_set;
 import rai.json.json_io;
+import rai.json.json_polymorphic;
 import rai.json.parallel_input_stream_source;
 import rai.json.reading_ahead_buffer;
 import rai.collection.sorted_hash_array_map;
@@ -63,10 +64,12 @@ struct VectorData {
     std::vector<std::string> tags;
 
     const IJsonFieldSet& jsonFields() const {
+        static const auto numbersConverter = getContainerConverter<decltype(numbers)>();
+        static const auto tagsConverter = getContainerConverter<decltype(tags)>();
         static const auto fields = makeJsonFieldSet<VectorData>(
             getRequiredField(&VectorData::category, "category"),
-            getRequiredField(&VectorData::numbers, "numbers"),
-            getRequiredField(&VectorData::tags, "tags")
+            getRequiredField(&VectorData::numbers, "numbers", numbersConverter),
+            getRequiredField(&VectorData::tags, "tags", tagsConverter)
         );
         return fields;
     }
@@ -81,7 +84,7 @@ struct BaseNode {
 
     virtual const IJsonFieldSet& jsonFields() const {
         static const auto fields = makeJsonFieldSet<BaseNode>(
-            getRequiredField(&BaseNode::type, "type"),
+            getDefaultOmittedField(&BaseNode::type, "type", std::string{}),
             getRequiredField(&BaseNode::nodeId, "nodeId")
         );
         return fields;
@@ -94,7 +97,7 @@ struct DataNode : public BaseNode {
 
     const IJsonFieldSet& jsonFields() const override {
         static const auto fields = makeJsonFieldSet<DataNode>(
-            getRequiredField(&BaseNode::type, "type"),
+            getDefaultOmittedField(&BaseNode::type, "type", std::string{}),
             getRequiredField(&BaseNode::nodeId, "nodeId"),
             getRequiredField(&DataNode::dataValue, "dataValue")
         );
@@ -107,10 +110,11 @@ struct ContainerNode : public BaseNode {
     std::vector<std::string> children;
 
     const IJsonFieldSet& jsonFields() const override {
+        static const auto childrenConverter = getContainerConverter<decltype(children)>();
         static const auto fields = makeJsonFieldSet<ContainerNode>(
-            getRequiredField(&BaseNode::type, "type"),
+            getDefaultOmittedField(&BaseNode::type, "type", std::string{}),
             getRequiredField(&BaseNode::nodeId, "nodeId"),
-            getRequiredField(&ContainerNode::children, "children")
+            getRequiredField(&ContainerNode::children, "children", childrenConverter)
         );
         return fields;
     }
@@ -140,12 +144,14 @@ struct ComplexData {
     std::vector<VectorData> collections;
 
     const IJsonFieldSet& jsonFields() const {
+        static const auto itemsConverter = getContainerConverter<decltype(items)>();
+        static const auto collectionsConverter = getContainerConverter<decltype(collections)>();
         static const auto fields = makeJsonFieldSet<ComplexData>(
             getRequiredField(&ComplexData::name, "name"),
             getRequiredField(&ComplexData::level, "level"),
             makeJsonPolymorphicField(&ComplexData::node, "node", baseNodeEntriesMap),
-            getRequiredField(&ComplexData::items, "items"),
-            getRequiredField(&ComplexData::collections, "collections")
+            getRequiredField(&ComplexData::items, "items", itemsConverter),
+            getRequiredField(&ComplexData::collections, "collections", collectionsConverter)
         );
         return fields;
     }
@@ -366,7 +372,7 @@ static void runSequentialPipeline(
     fileReadTime = timer.elapsedMicroseconds();
 
     timer.start();
-    std::vector<char> buffer(loadedData.begin(), loadedData.end());
+    std::string buffer = loadedData;
     constexpr std::size_t aheadSize = 8;
     buffer.reserve(buffer.size() + aheadSize);
     ReadingAheadBuffer inputSource(std::move(buffer), aheadSize);
@@ -413,7 +419,7 @@ static void runInMemoryBenchmark(const std::string& jsonData,
 
         // (2) トークン解析時間
         timer.start();
-        std::vector<char> buffer(loadedData.begin(), loadedData.end());
+        std::string buffer = loadedData;
         constexpr std::size_t aheadSize = 8;
         buffer.reserve(buffer.size() + aheadSize);
         ReadingAheadBuffer inputSource(std::move(buffer), aheadSize);

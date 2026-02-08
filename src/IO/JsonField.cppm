@@ -927,21 +927,4 @@ constexpr auto getVariantConverter(ElementConverterType elementConverter) {
 }
 
 
-/// @brief 汎用の `TokenDispatchConverter` を受け取って `JsonField` を作成するヘルパー。
-export template <typename MemberPtr, typename Converter>
-constexpr auto makeJsonTokenDispatchField(MemberPtr memberPtr, const char* keyName,
-    const Converter& conv) {
-    static_assert(std::is_member_object_pointer_v<MemberPtr>,
-        "makeJsonTokenDispatchField requires MemberPtr to be a member object pointer");
-    static_assert(requires { typename Converter::Value; },
-        "Converter must define nested type 'Value'");
-    static_assert(std::same_as<typename Converter::Value, MemberPointerValueType<MemberPtr>>,
-        "Converter::Value must match the member's value type");
-    using Value = MemberPointerValueType<MemberPtr>;
-    using Behavior = RequiredFieldOmitBehavior<Value>;
-    return JsonField<MemberPtr, std::remove_cvref_t<Converter>, Behavior>(
-        memberPtr, keyName, std::cref(conv), Behavior{});
-}
-
-
 }  // namespace rai::json
