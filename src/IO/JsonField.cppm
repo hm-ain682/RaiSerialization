@@ -27,7 +27,6 @@ module;
 
 export module rai.json.json_field;
 
-import rai.json.json_concepts;
 import rai.json.json_writer;
 import rai.json.json_parser;
 import rai.json.json_token_manager;
@@ -37,6 +36,68 @@ import rai.collection.sorted_hash_array_map;
 namespace rai::json {
 
 // ******************************************************************************** メタプログラミング、concept
+
+/// @brief プリミティブ型（int, double, bool など）かどうかを判定するconcept。
+/// @tparam T 判定対象の型。
+export template <typename T>
+concept IsFundamentalValue = std::is_fundamental_v<T>;
+
+/// @brief jsonFields()メンバー関数を持つかどうかを判定するconcept。
+/// @tparam T 判定対象の型。
+export template <typename T>
+concept HasJsonFields = requires(const T& t) { t.jsonFields(); };
+
+/// @brief writeJsonメソッドを持つ型を表すconcept。
+/// @tparam T 型。
+export template <typename T>
+concept HasWriteJson = requires(const T& obj, JsonWriter& writer) {
+    { obj.writeJson(writer) } -> std::same_as<void>;
+};
+
+/// @brief readJsonメソッドを持つ型を表すconcept。
+/// @tparam T 型。
+export template <typename T>
+concept HasReadJson = requires(T& obj, JsonParser& parser) {
+    { obj.readJson(parser) } -> std::same_as<void>;
+};
+
+/// @brief std::variant 型かどうかを判定する concept（std::variant 固有の trait を確認）。
+export template <typename T>
+concept IsStdVariant = requires {
+    typename std::variant_size<T>::type;
+};
+
+/// @brief 文字列系型かどうかを判定するconcept。
+/// @tparam T 判定対象の型。
+export template <typename T>
+concept LikesString = std::is_same_v<T, std::string> || std::is_same_v<T, std::string_view>;
+
+/// @brief string 系を除くレンジ（配列/コンテナ）を表す concept。
+/// @details std::ranges::range を満たし、かつ `LikesString` を除外することで
+///          `std::string` を配列として誤判定しないようにします。
+/// @tparam T 判定対象の型
+export template<typename T>
+concept IsContainer = std::ranges::range<T> && !LikesString<T>;
+
+/// @brief std::unique_ptr を判定する concept（element_type / deleter_type を確認し正確に判定）。
+/// @tparam T 判定対象の型
+export template <typename T>
+concept IsUniquePtr = requires {
+    typename T::element_type;
+    typename T::deleter_type;
+} && std::is_same_v<T, std::unique_ptr<typename T::element_type, typename T::deleter_type>>;
+
+/// @brief std::shared_ptr を判定する concept（element_type を確認し正確に判定）。
+/// @tparam T 判定対象の型
+export template <typename T>
+concept IsSharedPtr = requires {
+    typename T::element_type;
+} && std::is_same_v<T, std::shared_ptr<typename T::element_type>>;
+
+/// @brief ポインタ型（unique_ptr/shared_ptr/生ポインタ）であることを確認する concept。
+/// @tparam T 判定対象の型
+export template <typename T>
+concept IsSmartOrRawPointer = IsUniquePtr<T> || IsSharedPtr<T> || std::is_pointer_v<T>;
 
 /// @brief メンバーポインタの特性を抽出するメタ関数。
 /// @tparam T メンバーポインタ型。
