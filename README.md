@@ -5,7 +5,8 @@ fast, dependency-free parsing and convenient, declarative mappings between C++ t
 
 ## Key features ✅
 - Zero-dependency JSON5 tokenizer, parser, and writer
-- Declarative field descriptors: `JsonField`, `JsonEnumField`, `JsonPolymorphicField` for struct ↔ JSON conversion
+- Declarative field descriptors: `getRequiredField`, `getDefaultOmittedField`, `getInitialOmittedField`
+- Enum and polymorphic converters: `getEnumConverter`, `getPolymorphicConverter`, `getPolymorphicArrayConverter`
 - Polymorphic object support (single object and arrays) using type tags
 - Small, fixed-capacity sorted-hash array map for fast key lookup without heap allocations
 - Optional parallel input helpers via a lightweight thread pool
@@ -36,7 +37,7 @@ Tests are built when `RAIJSON_BUILD_TESTS` is enabled (the configure presets ena
 Run the test suite with:
 
 ```powershell
-ctest --preset clang-ninja-debug --output-on-failure -V
+ctest --test-dir build/clang-ninja -C Debug --output-on-failure -V
 ```
 
 ## Install and use with find_package 📦
@@ -55,7 +56,7 @@ target_link_libraries(app PRIVATE RaiJson::RaiJson)
 ```
 
 ## Quick example 📄
-A minimal example showing `JsonField` based reflection:
+A minimal example showing field-based reflection:
 
 ```cpp
 import rai.json.json_field;
@@ -67,8 +68,8 @@ struct Point {
     int y{};
     const rai::json::IJsonFieldSet& jsonFields() const {
         static const auto fields = rai::json::makeJsonFieldSet<Point>(
-            rai::json::makeJsonField(&Point::x, "x"),
-            rai::json::makeJsonField(&Point::y, "y")
+            rai::json::getRequiredField(&Point::x, "x"),
+            rai::json::getRequiredField(&Point::y, "y")
         );
         return fields;
     }
@@ -83,8 +84,9 @@ int main() {
 }
 ```
 
-## Enum fields example (JsonEnumField) 🔁
+## Enum converter example (getEnumConverter) 🔁
 Serialize enum members as strings by defining an enum map and using `getRequiredField` with an enum converter.
+`getEnumConverter` accepts C arrays, `std::array`, or `std::span`, so a braced initializer works via `std::array`.
 
 ```cpp
 import rai.json.json_field;
@@ -110,7 +112,7 @@ struct ColorHolder {
 };
 ```
 
-## Polymorphic fields (JsonPolymorphicField / JsonPolymorphicArrayField) 🧩
+## Polymorphic fields 🧩
 Register derived-type factory functions in a map and the serializer will include a type key (default: `"type"`) in the JSON.
 The type key can be customized when creating the polymorphic field.
 
@@ -130,7 +132,7 @@ struct Circle : public Shape {
     double radius = 0.0;
     const rai::json::IJsonFieldSet& jsonFields() const override {
         static const auto fields = rai::json::makeJsonFieldSet<Circle>(
-            rai::json::makeJsonField(&Circle::radius, "radius")
+            rai::json::getRequiredField(&Circle::radius, "radius")
         );
         return fields;
     }
@@ -141,8 +143,8 @@ struct Rectangle : public Shape {
     double height = 0.0;
     const rai::json::IJsonFieldSet& jsonFields() const override {
         static const auto fields = rai::json::makeJsonFieldSet<Rectangle>(
-            rai::json::makeJsonField(&Rectangle::width, "width"),
-            rai::json::makeJsonField(&Rectangle::height, "height")
+            rai::json::getRequiredField(&Rectangle::width, "width"),
+            rai::json::getRequiredField(&Rectangle::height, "height")
         );
         return fields;
     }
@@ -217,7 +219,9 @@ struct CustomData {
 - `src/IO/JsonTokenManager.cppm`: Token queue abstraction for thread-safe parsing.
 - `src/IO/JsonParser.cppm`: Token-based parser with strong type checks and unknown-key tracking.
 - `src/IO/JsonWriter.cppm`: JSON5 writer with identifier-aware key emission and escaping.
-- `src/IO/JsonField.cppm`: Field descriptors, including enum and polymorphic support.
+- `src/IO/JsonConverter.cppm`: Converters for primitives, enums, containers, pointers, and custom types.
+- `src/IO/JsonPolymorphic.cppm`: Polymorphic converters with type tags.
+- `src/IO/JsonField.cppm`: Field descriptors and omit behaviors.
 - `src/IO/JsonFieldSet.cppm`: Field-set reflection and (de)serialization glue.
 - `src/IO/JsonIO.cppm`: High-level helpers for reading/writing strings, files, and streams.
 
