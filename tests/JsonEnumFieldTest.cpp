@@ -25,7 +25,7 @@ struct CH {
 
     const IJsonFieldSet& jsonFields() const {
         static const auto colorConverter = rai::json::getEnumConverter(colorEntries);
-        static const auto fields = makeJsonFieldSet<CH>(
+        static const auto fields = getFieldSet(
             rai::json::getRequiredField(&CH::color, "color", colorConverter)
         );
         return fields;
@@ -45,7 +45,7 @@ struct CH2 {
             { Color::Green, "green" },
             { Color::Blue,  "blue" }
         });
-        static const auto fields = makeJsonFieldSet<CH2>(
+        static const auto fields = getFieldSet(
             rai::json::getRequiredField(&CH2::color, "color", colorConverter)
         );
         return fields;

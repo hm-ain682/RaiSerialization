@@ -30,9 +30,9 @@ struct A {
     /// @brief JSONフィールドを取得する仮想関数。
     /// @return フィールドプランへの参照。
     /// @note 戻り値はIJsonFieldSet&で、派生クラスでオーバーライド可能。
-    ///       makeJsonFieldSetを使用することで型名を簡潔に記述。
+    ///       getFieldSetを使用することで型名を簡潔に記述。
     virtual const IJsonFieldSet& jsonFields() const {
-        static const auto fields = makeJsonFieldSet<A>(
+        static const auto fields = getFieldSet(
             getRequiredField(&A::w, "w"),
             getRequiredField(&A::x, "x")
         );
@@ -47,9 +47,9 @@ struct B : public A {
     /// @brief JSONフィールドを取得する仮想関数のオーバーライド。
     /// @return フィールドプランへの参照。
     /// @note A::wとB::yのみを公開（A::xは含まない）。
-    ///       makeJsonFieldSetを使用することで型名を簡潔に記述。
+    ///       getFieldSetを使用することで型名を簡潔に記述。
     const IJsonFieldSet& jsonFields() const override {
-        static const auto fields = makeJsonFieldSet<B>(
+        static const auto fields = getFieldSet(
             getRequiredField(&A::w, "w"),
             getRequiredField(&B::y, "y")
         );
@@ -64,9 +64,9 @@ struct C : public A {
     /// @brief JSONフィールドを取得する仮想関数のオーバーライド。
     /// @return フィールドプランへの参照。
     /// @note A::wとC::zのみを公開（A::xは含まない）。
-    ///       makeJsonFieldSetを使用することで型名を簡潔に記述。
+    ///       getFieldSetを使用することで型名を簡潔に記述。
     const IJsonFieldSet& jsonFields() const override {
-        static const auto fields = makeJsonFieldSet<C>(
+        static const auto fields = getFieldSet(
             getRequiredField(&A::w, "w"),
             getRequiredField(&C::z, "z")
         );
@@ -82,7 +82,7 @@ struct PB {
     virtual ~PB() = default;
 
     virtual const IJsonFieldSet& jsonFields() const {
-        static const auto f = makeJsonFieldSet<PB>();
+        static const auto f = JsonFieldSet<PB>{};
         return f;
     }
 
@@ -96,7 +96,7 @@ struct POne : public PB {
     int x = 0;
 
     const IJsonFieldSet& jsonFields() const override {
-        static const auto f = makeJsonFieldSet<POne>(
+        static const auto f = getFieldSet(
             getRequiredField(&POne::x, "x")
         );
         return f;
@@ -112,7 +112,7 @@ struct PTwo : public PB {
     std::string s;
 
     const IJsonFieldSet& jsonFields() const override {
-        static const auto f = makeJsonFieldSet<PTwo>(
+        static const auto f = getFieldSet(
             getRequiredField(&PTwo::s, "s")
         );
         return f;
@@ -141,7 +141,7 @@ struct Holder {
             pbEntriesMap, "kind");
         static const auto arrayConverter =
             getPolymorphicArrayConverter<decltype(arr)>(pbEntriesMap, "kind");
-        static const auto fields = makeJsonFieldSet<Holder>(
+        static const auto fields = getFieldSet(
             getRequiredField(&Holder::item, "item", itemConverter),
             getRequiredField(&Holder::arr, "arr", arrayConverter)
         );
@@ -181,7 +181,7 @@ struct DefaultFieldTest {
     int b = 0;
 
     const IJsonFieldSet& jsonFields() const {
-        static const auto fields = makeJsonFieldSet<DefaultFieldTest>(
+        static const auto fields = getFieldSet(
             getRequiredField(&DefaultFieldTest::a, "a"),
             getDefaultOmittedField(&DefaultFieldTest::b, "b", 42)
         );
@@ -195,7 +195,7 @@ struct SkipFieldTest {
 
     /// @brief JSONフィールド定義を返す。
     const IJsonFieldSet& jsonFields() const {
-        static const auto fields = makeJsonFieldSet<SkipFieldTest>(
+        static const auto fields = getFieldSet(
             getRequiredField(&SkipFieldTest::a, "a"),
             getDefaultOmittedField(&SkipFieldTest::b, "b", 0)
         );
@@ -271,7 +271,7 @@ struct IntegerTypes {
     unsigned long long ull = 0;
 
     const IJsonFieldSet& jsonFields() const {
-        static const auto fields = makeJsonFieldSet<IntegerTypes>(
+        static const auto fields = getFieldSet(
             getRequiredField(&IntegerTypes::s, "s"),
             getRequiredField(&IntegerTypes::us, "us"),
             getRequiredField(&IntegerTypes::i, "i"),
@@ -325,7 +325,7 @@ struct FloatingPointTypes {
     long double ld = 0.0L;
 
     const IJsonFieldSet& jsonFields() const {
-        static const auto fields = makeJsonFieldSet<FloatingPointTypes>(
+        static const auto fields = getFieldSet(
             getRequiredField(&FloatingPointTypes::f, "f"),
             getRequiredField(&FloatingPointTypes::d, "d"),
             getRequiredField(&FloatingPointTypes::ld, "ld")
@@ -366,7 +366,7 @@ struct CharacterTypes {
     wchar_t wc = L'\u30A6';
 
     const IJsonFieldSet& jsonFields() const {
-        static const auto fields = makeJsonFieldSet<CharacterTypes>(
+        static const auto fields = getFieldSet(
             getRequiredField(&CharacterTypes::c, "c"),
             getRequiredField(&CharacterTypes::sc, "sc"),
             getRequiredField(&CharacterTypes::uc, "uc"),
@@ -412,7 +412,7 @@ struct TestHolder {
     char16_t c16 = 0;
 
     const IJsonFieldSet& jsonFields() const {
-        static const auto fields = makeJsonFieldSet<TestHolder>(
+        static const auto fields = getFieldSet(
             getRequiredField(&TestHolder::c16, "c16")
         );
         return fields;
@@ -449,7 +449,7 @@ struct NestedChild {
     std::string name;
 
     const IJsonFieldSet& jsonFields() const {
-        static const auto fields = makeJsonFieldSet<NestedChild>(
+        static const auto fields = getFieldSet(
             getRequiredField(&NestedChild::value, "value"),
             getRequiredField(&NestedChild::name, "name")
         );
@@ -467,7 +467,7 @@ struct NestedParent {
     bool flag = false;
 
     const IJsonFieldSet& jsonFields() const {
-        static const auto fields = makeJsonFieldSet<NestedParent>(
+        static const auto fields = getFieldSet(
             getRequiredField(&NestedParent::child, "child"),
             getRequiredField(&NestedParent::flag, "flag")
         );
@@ -510,7 +510,7 @@ struct PointerHolder {
                 getUniquePtrConverter<decltype(ptr)>();
             static const auto containerConverter =
                 getContainerConverter<decltype(ptrVec)>(elementConverter);
-            static const auto fields = makeJsonFieldSet<PointerHolder>(
+            static const auto fields = getFieldSet(
                 getRequiredField(&PointerHolder::ptr, "ptr", uniquePtrConverter),
                 getRequiredField(&PointerHolder::ptrVec, "ptrVec", containerConverter)
             );
@@ -615,7 +615,7 @@ struct TokenDispatchHolder {
 
         auto tokenConv = FromConv();
         static const TokenDispatchConverter<DispatchValue, FromConv> conv(tokenConv);
-        static const auto fields = makeJsonFieldSet<TokenDispatchHolder>(
+        static const auto fields = getFieldSet(
             getRequiredField(&TokenDispatchHolder::value, "value", conv)
         );
         return fields;
@@ -757,7 +757,7 @@ struct Tag {
     int priority = 0;
 
     const IJsonFieldSet& jsonFields() const {
-        static const auto fields = makeJsonFieldSet<Tag>(
+        static const auto fields = getFieldSet(
             getRequiredField(&Tag::label, "label"),
             getRequiredField(&Tag::priority, "priority")
         );
@@ -779,7 +779,7 @@ struct SetFieldVectorHolder {
     const IJsonFieldSet& jsonFields() const {
         static const auto containerConverter =
             getContainerConverter<decltype(tags)>();
-        static const auto fields = makeJsonFieldSet<SetFieldVectorHolder>(
+        static const auto fields = getFieldSet(
             getRequiredField(&SetFieldVectorHolder::tags, "tags", containerConverter)
         );
         return fields;
@@ -816,7 +816,7 @@ struct SetFieldSetHolder {
     const IJsonFieldSet& jsonFields() const {
         static const auto containerConverter =
             getContainerConverter<decltype(tags)>();
-        static const auto fields = makeJsonFieldSet<SetFieldSetHolder>(
+        static const auto fields = getFieldSet(
             getRequiredField(&SetFieldSetHolder::tags, "tags", containerConverter)
         );
         return fields;
@@ -851,7 +851,7 @@ struct Point {
     int y = 0;
 
     const IJsonFieldSet& jsonFields() const {
-        static const auto fields = makeJsonFieldSet<Point>(
+        static const auto fields = getFieldSet(
             getRequiredField(&Point::x, "x"),
             getRequiredField(&Point::y, "y")
         );
@@ -873,7 +873,7 @@ struct SetFieldObjectHolder {
     const IJsonFieldSet& jsonFields() const {
         static const auto containerConverter =
             getContainerConverter<decltype(points)>();
-        static const auto fields = makeJsonFieldSet<SetFieldObjectHolder>(
+        static const auto fields = getFieldSet(
             getRequiredField(&SetFieldObjectHolder::points, "points", containerConverter)
         );
         return fields;
@@ -902,7 +902,7 @@ struct RWElement {
     int x = 0;
 
     const IJsonFieldSet& jsonFields() const {
-        static const auto fields = makeJsonFieldSet<RWElement>(
+        static const auto fields = getFieldSet(
             getRequiredField(&RWElement::x, "x")
         );
         return fields;
@@ -919,7 +919,7 @@ TEST(JsonElementConverterTest, ContainerUsesElementConverter) {
         const IJsonFieldSet& jsonFields() const {
             static const auto containerConverter =
                 getContainerConverter<decltype(v)>();
-            static const auto fields = makeJsonFieldSet<Holder>(
+            static const auto fields = getFieldSet(
                 getRequiredField(&Holder::v, "v", containerConverter)
             );
             return fields;
@@ -945,7 +945,7 @@ TEST(JsonElementConverterTest, UniquePtrUsesElementConverter) {
         const IJsonFieldSet& jsonFields() const {
             static const auto uniquePtrConverter =
                 getUniquePtrConverter<decltype(item)>();
-            static const auto fields = makeJsonFieldSet<Holder>(
+            static const auto fields = getFieldSet(
                 getRequiredField(&Holder::item, "item", uniquePtrConverter)
             );
             return fields;
@@ -972,7 +972,7 @@ TEST(JsonElementConverterTest, VariantUsesElementConverter) {
         std::variant<int, RWElement> v;
         const IJsonFieldSet& jsonFields() const {
             static const auto converter = getVariantConverter<decltype(v)>();
-            static const auto fields = makeJsonFieldSet<Holder>(
+            static const auto fields = getFieldSet(
                 getRequiredField(&Holder::v, "v", converter)
             );
             return fields;
@@ -1025,7 +1025,7 @@ TEST(JsonElementConverterTest, VariantElementConverterDerivedCustomizesString) {
         const IJsonFieldSet& jsonFields() const {
             static const MyElemConv elemConv{};
             static const auto conv = getVariantConverter<Var>(elemConv);
-            static const auto fields = makeJsonFieldSet<Holder>(
+            static const auto fields = getFieldSet(
                 getInitialOmittedField(&Holder::v, "v", conv)
             );
             return fields;
@@ -1059,7 +1059,7 @@ TEST(JsonElementConverterTest, NestedContainerUsesElementConverter) {
                 getContainerConverter<RWElementVector>(innerElemConv);
             static const auto containerConverter =
                 getContainerConverter<decltype(v)>(innerConverter);
-            static const auto fields = makeJsonFieldSet<Holder>(
+            static const auto fields = getFieldSet(
                 getRequiredField(&Holder::v, "v", containerConverter)
             );
             return fields;
@@ -1087,7 +1087,7 @@ TEST(JsonElementConverterExplicitTest, ContainerOfEnumWithExplicitContainerConve
         const IJsonFieldSet& jsonFields() const {
             static const auto containerConverter =
                 getContainerConverter<decltype(v)>(enumConverter);
-            static const auto fields = makeJsonFieldSet<Holder>(
+            static const auto fields = getFieldSet(
                 getRequiredField(&Holder::v, "v", containerConverter)
             );
             return fields;
@@ -1112,7 +1112,7 @@ TEST(JsonElementConverterExplicitTest, ContainerWithExplicitElementConverter) {
             static const JsonFieldsConverter<RWElement> elementConverter{};
             static const auto containerConverter =
                 getContainerConverter<decltype(v)>(elementConverter);
-            static const auto fields = makeJsonFieldSet<Holder>(
+            static const auto fields = getFieldSet(
                 getRequiredField(&Holder::v, "v", containerConverter)
             );
             return fields;

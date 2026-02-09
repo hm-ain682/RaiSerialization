@@ -48,7 +48,7 @@ struct SimpleData {
     std::string name;
 
     const IJsonFieldSet& jsonFields() const {
-        static const auto fields = makeJsonFieldSet<SimpleData>(
+        static const auto fields = getFieldSet(
             getRequiredField(&SimpleData::id, "id"),
             getRequiredField(&SimpleData::value, "value"),
             getRequiredField(&SimpleData::flag, "flag"),
@@ -67,7 +67,7 @@ struct VectorData {
     const IJsonFieldSet& jsonFields() const {
         static const auto numbersConverter = getContainerConverter<decltype(numbers)>();
         static const auto tagsConverter = getContainerConverter<decltype(tags)>();
-        static const auto fields = makeJsonFieldSet<VectorData>(
+        static const auto fields = getFieldSet(
             getRequiredField(&VectorData::category, "category"),
             getRequiredField(&VectorData::numbers, "numbers", numbersConverter),
             getRequiredField(&VectorData::tags, "tags", tagsConverter)
@@ -84,7 +84,7 @@ struct BaseNode {
     virtual ~BaseNode() = default;
 
     virtual const IJsonFieldSet& jsonFields() const {
-        static const auto fields = makeJsonFieldSet<BaseNode>(
+        static const auto fields = getFieldSet(
             getDefaultOmittedField(&BaseNode::type, "type", std::string{}),
             getRequiredField(&BaseNode::nodeId, "nodeId")
         );
@@ -97,7 +97,7 @@ struct DataNode : public BaseNode {
     double dataValue = 0.0;
 
     const IJsonFieldSet& jsonFields() const override {
-        static const auto fields = makeJsonFieldSet<DataNode>(
+        static const auto fields = getFieldSet(
             getDefaultOmittedField(&BaseNode::type, "type", std::string{}),
             getRequiredField(&BaseNode::nodeId, "nodeId"),
             getRequiredField(&DataNode::dataValue, "dataValue")
@@ -112,7 +112,7 @@ struct ContainerNode : public BaseNode {
 
     const IJsonFieldSet& jsonFields() const override {
         static const auto childrenConverter = getContainerConverter<decltype(children)>();
-        static const auto fields = makeJsonFieldSet<ContainerNode>(
+        static const auto fields = getFieldSet(
             getDefaultOmittedField(&BaseNode::type, "type", std::string{}),
             getRequiredField(&BaseNode::nodeId, "nodeId"),
             getRequiredField(&ContainerNode::children, "children", childrenConverter)
@@ -149,7 +149,7 @@ struct ComplexData {
         static const auto collectionsConverter = getContainerConverter<decltype(collections)>();
         static const auto nodeConverter = getPolymorphicConverter<decltype(node)>(
             baseNodeEntriesMap);
-        static const auto fields = makeJsonFieldSet<ComplexData>(
+        static const auto fields = getFieldSet(
             getRequiredField(&ComplexData::name, "name"),
             getRequiredField(&ComplexData::level, "level"),
             getRequiredField(&ComplexData::node, "node", nodeConverter),

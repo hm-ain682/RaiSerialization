@@ -9,7 +9,7 @@ fast, dependency-free parsing and convenient, declarative mappings between C++ t
 - Enum and polymorphic converters: `getEnumConverter`, `getPolymorphicConverter`, `getPolymorphicArrayConverter`
 - Polymorphic object support (single object and arrays) using type tags
 - Small, fixed-capacity sorted-hash array map for fast key lookup without heap allocations
-- Optional parallel input helpers via a lightweight thread pool
+- Sequential/parallel JSON file loading with auto selection by file size
 
 ## Requirements ⚙️
 - CMake >= 3.28
@@ -67,7 +67,7 @@ struct Point {
     int x{};
     int y{};
     const rai::json::IJsonFieldSet& jsonFields() const {
-        static const auto fields = rai::json::makeJsonFieldSet<Point>(
+        static const auto fields = rai::json::getFieldSet(
             rai::json::getRequiredField(&Point::x, "x"),
             rai::json::getRequiredField(&Point::y, "y")
         );
@@ -84,9 +84,40 @@ int main() {
 }
 ```
 
+## File input variants and unknown keys 🗂️
+File loading supports sequential, parallel, and auto-selected paths. You can also collect unknown keys.
+
+```cpp
+import rai.json.json_field;
+import rai.json.json_field_set;
+import rai.json.json_io;
+
+struct Config {
+    int value = 0;
+    const rai::json::IJsonFieldSet& jsonFields() const {
+        static const auto fields = rai::json::getFieldSet(
+            rai::json::getRequiredField(&Config::value, "value")
+        );
+        return fields;
+    }
+};
+
+int main() {
+    Config cfg{};
+    std::vector<std::string> unknownKeys;
+
+    // Auto-select (small files -> sequential, large -> parallel)
+    rai::json::readJsonFile("config.json", cfg, unknownKeys);
+
+    // Explicit modes
+    rai::json::readJsonFileSequential("config.json", cfg);
+    rai::json::readJsonFileParallel("config.json", cfg);
+}
+```
+
 ## Enum converter example (getEnumConverter) 🔁
-Serialize enum members as strings by defining an enum map and using `getRequiredField` with an enum converter.
-`getEnumConverter` accepts C arrays, `std::array`, or `std::span`, so a braced initializer works via `std::array`.
+Serialize enum members as strings by defining `EnumEntry` values and using `getRequiredField` with an enum converter.
+`getEnumConverter` accepts C arrays, `std::array`, or `std::span` of `EnumEntry`.
 
 ```cpp
 import rai.json.json_field;
@@ -99,12 +130,12 @@ struct ColorHolder {
     Color color = Color::Red;
 
     const rai::json::IJsonFieldSet& jsonFields() const {
-        static const auto colorConverter = rai::json::getEnumConverter<Color>({
+        static const auto colorConverter = rai::json::getEnumConverter({
             { Color::Red,   "red" },
             { Color::Green, "green" },
             { Color::Blue,  "blue" }
         });
-        static const auto fields = rai::json::makeJsonFieldSet<ColorHolder>(
+        static const auto fields = rai::json::getFieldSet(
             rai::json::getRequiredField(&ColorHolder::color, "color", colorConverter)
         );
         return fields;
@@ -131,7 +162,7 @@ struct Shape {
 struct Circle : public Shape {
     double radius = 0.0;
     const rai::json::IJsonFieldSet& jsonFields() const override {
-        static const auto fields = rai::json::makeJsonFieldSet<Circle>(
+        static const auto fields = rai::json::getFieldSet(
             rai::json::getRequiredField(&Circle::radius, "radius")
         );
         return fields;
@@ -142,7 +173,7 @@ struct Rectangle : public Shape {
     double width = 0.0;
     double height = 0.0;
     const rai::json::IJsonFieldSet& jsonFields() const override {
-        static const auto fields = rai::json::makeJsonFieldSet<Rectangle>(
+        static const auto fields = rai::json::getFieldSet(
             rai::json::getRequiredField(&Rectangle::width, "width"),
             rai::json::getRequiredField(&Rectangle::height, "height")
         );
@@ -167,13 +198,15 @@ struct Drawing {
         static const auto shapesConverter =
             rai::json::getPolymorphicArrayConverter<decltype(shapes)>(
                 shapeEntriesMap, "kind");
-        static const auto fields = rai::json::makeJsonFieldSet<Drawing>(
+        static const auto fields = rai::json::getFieldSet(
             rai::json::getRequiredField(&Drawing::mainShape, "mainShape", mainShapeConverter),
             rai::json::getRequiredField(&Drawing::shapes, "shapes", shapesConverter)
         );
         return fields;
     }
 };
+
+> Note: Polymorphic converters accept an optional `allowNull` flag (default: `true`).
 ```
 
 ## Custom read/write methods (writeJson / readJson) ✍️

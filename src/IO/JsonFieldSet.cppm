@@ -50,6 +50,8 @@ public:
     virtual void readFields(JsonParser& parser, void* obj) const = 0;
 };
 
+// ******************************************************************************** フィールドセット
+
 /// @brief JsonField互換のインターフェースを満たすか判定するconcept。
 /// @tparam Field 判定対象のフィールド型
 export template <typename Field>
@@ -61,21 +63,19 @@ concept IsReadWriteField = requires(const Field& field, JsonParser& parser, Json
     { field.key } -> std::convertible_to<const char*>;
 };
 
-// ******************************************************************************** フィールドセット
-
 /// @brief JSONフィールドセットの実装クラス。
 /// @tparam Owner 所有者型。
 /// @tparam Fields フィールド型のパラメータパック。
 export template <typename Owner, typename... Fields>
-class JsonFieldSetBody : public IJsonFieldSet {
+class JsonFieldSet : public IJsonFieldSet {
 private:
     static_assert((IsReadWriteField<std::remove_cvref_t<Fields>> && ...),
-        "JsonFieldSetBody fields must satisfy JsonField-like interface");
+        "JsonFieldSet fields must satisfy JsonField-like interface");
     static_assert((std::is_base_of_v<typename std::remove_cvref_t<Fields>::Owner, Owner> && ...),
-        "JsonFieldSetBody fields must be accessible from Owner type");
+        "JsonFieldSet fields must be accessible from Owner type");
 
 public:
-    constexpr explicit JsonFieldSetBody(Fields... fields)
+    constexpr explicit JsonFieldSet(Fields... fields)
         : fields_(std::move(fields)...) {
         // Build a small array of key/value descriptors from the stored fields_
         // so SortedHashArrayMap can be constructed from elements that have
@@ -189,10 +189,7 @@ private:
     std::tuple<std::remove_cvref_t<Fields>...> fields_{}; ///< フィールド定義群。
 };
 
-export template <typename Owner, typename... Fields>
-using JsonFieldSet = JsonFieldSetBody<Owner, Fields...>;
-
-// ******************************************************************************** ヘルパー関数用のメタプログラミング型特性
+// ******************************************************************************** ヘルパー関数
 
 /// @brief 2つの所有者型の上位型を推論する。
 /// @tparam Left 左辺の型。
@@ -221,28 +218,16 @@ struct DeduceOwner<Owner, Next, Rest...> {
     using type = typename DeduceOwner<Promoted, Rest...>::type;
 };
 
-// ******************************************************************************** ヘルパー関数
-
-/// @brief JsonFieldSetを生成するヘルパー関数（所有者型を明示指定）。
-/// @tparam Owner 所有者型。
-/// @tparam Fields フィールド型のパラメータパック。
-/// @param fields フィールド定義群。
-/// @return 生成されたJsonFieldSet。
-export template <typename Owner, typename... Fields>
-constexpr auto makeJsonFieldSet(Fields... fields) {
-    return JsonFieldSet<Owner, std::remove_cvref_t<Fields>...>(std::move(fields)...);
-}
-
 /// @brief JsonFieldSetを生成するヘルパー関数（所有者型を自動推論）。
 /// @tparam Fields フィールド型のパラメータパック。
 /// @param fields フィールド定義群。
 /// @return 生成されたJsonFieldSet。
 /// @note フィールドから所有者型を自動的に推論する。
 export template <typename... Fields>
-constexpr auto makeJsonFieldSet(Fields... fields) {
-    static_assert(sizeof...(Fields) > 0, "makeJsonFieldSet requires explicit Owner when no fields are specified");
+constexpr auto getFieldSet(Fields... fields) {
+    static_assert(sizeof...(Fields) > 0, "getFieldSet requires at least one field");
     using Owner = typename DeduceOwner<typename std::remove_cvref_t<Fields>::Owner...>::type;
-    return makeJsonFieldSet<Owner>(std::move(fields)...);
+    return JsonFieldSet<Owner, std::remove_cvref_t<Fields>...>(std::move(fields)...);
 }
 
 }  // namespace rai::json
