@@ -54,6 +54,18 @@ struct PointerElementType<T*> {
     using type = T;
 };
 
+/// @brief std::shared_ptr を判定する concept（element_type を確認し正確に判定）。
+/// @tparam T 判定対象の型。
+template <typename T>
+concept IsSharedPtr = requires {
+    typename T::element_type;
+} && std::is_same_v<T, std::shared_ptr<typename T::element_type>>;
+
+/// @brief ポインタ型（unique_ptr/shared_ptr/生ポインタ）であることを確認する concept。
+/// @tparam T 判定対象の型。
+template <typename T>
+concept IsSmartOrRawPointer = IsUniquePtr<T> || IsSharedPtr<T> || std::is_pointer_v<T>;
+
 /// @brief ポリモーフィック型用のファクトリ関数型（ポインタ型を返す）。
 export template <typename Ptr>
     requires IsSmartOrRawPointer<Ptr>

@@ -36,7 +36,7 @@ import rai.collection.sorted_hash_array_map;
 
 namespace rai::json {
 
-// ******************************************************************************** メタプログラミング
+// ******************************************************************************** 省略時挙動
 
 /// @brief メンバーポインタの特性を抽出するメタ関数。
 /// @tparam T メンバーポインタ型。
@@ -63,16 +63,6 @@ concept IsSingleValueBehaviorAllowed = std::is_copy_constructible_v<Value>
         || (std::is_copy_constructible_v<std::remove_cvref_t<std::ranges::range_value_t<Value>>>
             && std::is_copy_assignable_v<std::remove_cvref_t<std::ranges::range_value_t<Value>>>))
     && (!IsUniquePtr<Value>);
-
-/// @brief JsonFieldの省略時挙動を満たす型の concept。
-/// @tparam Behavior 挙動型
-/// @tparam Value 値型
-export template <typename Behavior, typename Value>
-concept IsJsonFieldOmittedBehavior = requires(const Behavior& behavior, const Value& value,
-    Value& outValue, std::string_view key) {
-    { behavior.shouldSkipWrite(value) } -> std::same_as<bool>;
-    { behavior.applyMissing(outValue, key) } -> std::same_as<void>;
-};
 
 /// @brief 読み込み時省略では既定値を設定し、書き出し時既定値と一致するならスキップする省略時挙動。
 /// @tparam Value 値型
@@ -146,6 +136,16 @@ struct RequiredFieldOmitBehavior {
 };
 
 // ******************************************************************************** フィールド
+
+/// @brief JsonFieldの省略時挙動を満たす型の concept。
+/// @tparam Behavior 挙動型
+/// @tparam Value 値型
+export template <typename Behavior, typename Value>
+concept IsJsonFieldOmittedBehavior = requires(const Behavior& behavior, const Value& value,
+    Value& outValue, std::string_view key) {
+    { behavior.shouldSkipWrite(value) } -> std::same_as<bool>;
+    { behavior.applyMissing(outValue, key) } -> std::same_as<void>;
+};
 
 /// @brief メンバー変数とJSON項目を対応付ける。
 export template <typename MemberPtr, typename Converter, typename OmittedBehavior>
