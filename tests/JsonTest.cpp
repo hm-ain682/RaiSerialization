@@ -190,13 +190,14 @@ struct DefaultFieldTest {
 };
 
 struct SkipFieldTest {
-    int a = 1;
-    int b = 0;
+    int a = 1;  ///< 必須値。
+    int b = 0;  ///< 省略判定対象。
 
+    /// @brief JSONフィールド定義を返す。
     const IJsonFieldSet& jsonFields() const {
         static const auto fields = makeJsonFieldSet<SkipFieldTest>(
             getRequiredField(&SkipFieldTest::a, "a"),
-            getInitialOmittedField(&SkipFieldTest::b, "b", 0)
+            getDefaultOmittedField(&SkipFieldTest::b, "b", 0)
         );
         return fields;
     }
@@ -1025,8 +1026,7 @@ TEST(JsonElementConverterTest, VariantElementConverterDerivedCustomizesString) {
             static const MyElemConv elemConv{};
             static const auto conv = getVariantConverter<Var>(elemConv);
             static const auto fields = makeJsonFieldSet<Holder>(
-                JsonField(&Holder::v, "v", std::cref(conv),
-                    NoDefaultFieldOmitBehavior<Var>{})
+                getInitialOmittedField(&Holder::v, "v", conv)
             );
             return fields;
         }

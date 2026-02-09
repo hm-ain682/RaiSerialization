@@ -275,32 +275,30 @@ constexpr auto getDefaultOmittedField(MemberPtr memberPtr, const char* keyName,
     return getField(memberPtr, keyName, converter, behavior);
 }
 
-/// @brief 読み込み時省略では何も行わず、書き込み時のみ指定値と等しい場合に省略するJsonFieldを返す。
+/// @brief 読み込み時省略では何も行わず、書き込み時も省略しないJsonFieldを返す。
 ///        与えられた MemberPtr の値型（以下）に対するコンバータを使用する。
 ///        基本型、HasJsonFields、HasReadJson/HasWriteJson
 /// @param memberPtr メンバポインタ
 /// @param keyName JSONキー名
-/// @param skipValue 書き込み時の省略判定に使う値
 export template <typename MemberPtr>
-constexpr auto getInitialOmittedField(MemberPtr memberPtr, const char* keyName,
-    const MemberPointerValueType<MemberPtr>& skipValue) {
+constexpr auto getInitialOmittedField(MemberPtr memberPtr, const char* keyName) {
     using Value = MemberPointerValueType<MemberPtr>;
     const auto& converter = getConverter<Value>();
-    SingleValueFieldOmitBehavior<Value> behavior
-    { .defaultValue = skipValue };
+    NoDefaultFieldOmitBehavior<Value> behavior{};
     return getField(memberPtr, keyName, converter, behavior);
 }
 
-/// @brief 読み込み時省略では何も行わず、書き込み時のみ指定値と等しい場合に省略するJsonFieldを返す。
+/// @brief 読み込み時省略では何も行わず、書き込み時も省略しないJsonFieldを返す。
 /// @param memberPtr メンバポインタ
 /// @param keyName JSONキー名
-/// @param skipValue 書き込み時の省略判定に使う値
 /// @param converter 値型に対応するコンバータ
 export template <typename MemberPtr, typename Converter>
+    requires IsJsonConverter<Converter, MemberPointerValueType<MemberPtr>>
 constexpr auto getInitialOmittedField(MemberPtr memberPtr, const char* keyName,
-    const MemberPointerValueType<MemberPtr>& skipValue, const Converter& converter) {
-    SingleValueFieldOmitBehavior<MemberPointerValueType<MemberPtr>> behavior
-    { .defaultValue = skipValue };
+    const Converter& converter) {
+    using Value = MemberPointerValueType<MemberPtr>;
+    NoDefaultFieldOmitBehavior<Value> behavior{};
     return getField(memberPtr, keyName, converter, behavior);
 }
+
 }  // namespace rai::json
