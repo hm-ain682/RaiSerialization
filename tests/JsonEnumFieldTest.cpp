@@ -1,16 +1,16 @@
-import rai.json.json_field_set;
-import rai.json.json_field;
-import rai.json.json_converter;
-import rai.json.json_writer;
-import rai.json.json_parser;
-import rai.json.json_io;
-import rai.json.test_helper;
+import rai.serialization.json_field_set;
+import rai.serialization.json_field;
+import rai.serialization.json_converter;
+import rai.serialization.json_writer;
+import rai.serialization.json_parser;
+import rai.serialization.json_io;
+import rai.serialization.test_helper;
 #include <gtest/gtest.h>
 #include <string>
 #include <sstream>
 
-using namespace rai::json;
-using namespace rai::json::test;
+using namespace rai::serialization;
+using namespace rai::serialization::test;
 
 enum class Color { Red, Green, Blue };
 
@@ -24,9 +24,9 @@ struct CH {
     Color color = Color::Red;
 
     const IJsonFieldSet& jsonFields() const {
-        static const auto colorConverter = rai::json::getEnumConverter(colorEntries);
+        static const auto colorConverter = rai::serialization::getEnumConverter(colorEntries);
         static const auto fields = getFieldSet(
-            rai::json::getRequiredField(&CH::color, "color", colorConverter)
+            rai::serialization::getRequiredField(&CH::color, "color", colorConverter)
         );
         return fields;
     }
@@ -40,13 +40,13 @@ struct CH2 {
     Color color = Color::Red;
 
     const IJsonFieldSet& jsonFields() const {
-        static const auto colorConverter = rai::json::getEnumConverter<Color>({
+        static const auto colorConverter = rai::serialization::getEnumConverter<Color>({
             { Color::Red,   "red" },
             { Color::Green, "green" },
             { Color::Blue,  "blue" }
         });
         static const auto fields = getFieldSet(
-            rai::json::getRequiredField(&CH2::color, "color", colorConverter)
+            rai::serialization::getRequiredField(&CH2::color, "color", colorConverter)
         );
         return fields;
     }

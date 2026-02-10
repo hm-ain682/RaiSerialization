@@ -11,12 +11,12 @@ module;
 #include <vector>
 #include <cassert>
 
-export module rai.json.parallel_input_stream_source;
-import rai.json.reading_ahead_double_buffer;
-import rai.json.reading_ahead_buffer;
+export module rai.serialization.parallel_input_stream_source;
+import rai.serialization.reading_ahead_double_buffer;
+import rai.serialization.reading_ahead_buffer;
 import rai.common.thread_pool;
 
-export namespace rai::json {
+export namespace rai::serialization {
 
 /// @brief ファイルストリームから並列安全にデータを読み取る入力ソース。
 /// @note 二重バッファを用いて効率的にファイル読み込みを行う。
@@ -188,4 +188,4 @@ public:
     std::future<void> pendingReadTask_;  ///< 実行中または待機中の読み込みタスク。
 };
 
-}  // namespace rai::json
+}  // namespace rai::serialization

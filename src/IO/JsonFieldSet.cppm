@@ -22,12 +22,12 @@ module;
 #include <typeinfo>
 
 import rai.collection.sorted_hash_array_map;
-import rai.json.json_writer;
-import rai.json.json_parser;
-import rai.json.json_token_manager;
-export module rai.json.json_field_set;
+import rai.serialization.json_writer;
+import rai.serialization.json_parser;
+import rai.serialization.json_token_manager;
+export module rai.serialization.json_field_set;
 
-namespace rai::json {
+namespace rai::serialization {
 
 // ******************************************************************************** 基底インターフェース
 
@@ -230,4 +230,4 @@ constexpr auto getFieldSet(Fields... fields) {
     return JsonFieldSet<Owner, std::remove_cvref_t<Fields>...>(std::move(fields)...);
 }
 
-}  // namespace rai::json
+}  // namespace rai::serialization

@@ -3,12 +3,12 @@ module;
 #include <gtest/gtest.h>
 #include <string>
 
-export module rai.json.test_helper;
+export module rai.serialization.test_helper;
 
-import rai.json.json_io;
-import rai.json.json_converter;
+import rai.serialization.json_io;
+import rai.serialization.json_converter;
 
-export namespace rai::json::test {
+export namespace rai::serialization::test {
 
 /// @brief オブジェクトをJSON形式で書き出し、仕様との一致を確認し、読み込んで元と比較する。
 /// @tparam T テスト対象の型。HasJsonFieldsを満たし、equalメソッドで同値判定できる必要がある。
@@ -37,4 +37,4 @@ void testJsonRoundTrip(const T& original, const std::string& expectedJson) {
     EXPECT_TRUE(parsed.equals(original));
 }
 
-} // namespace rai::json::test
+} // namespace rai::serialization::test

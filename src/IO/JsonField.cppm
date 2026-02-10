@@ -25,16 +25,16 @@ module;
 #include <unordered_set>
 #include <span>
 
-export module rai.json.json_field;
+export module rai.serialization.json_field;
 
-import rai.json.json_converter;
-import rai.json.json_writer;
-import rai.json.json_parser;
-import rai.json.json_token_manager;
+import rai.serialization.json_converter;
+import rai.serialization.json_writer;
+import rai.serialization.json_parser;
+import rai.serialization.json_token_manager;
 
 import rai.collection.sorted_hash_array_map;
 
-namespace rai::json {
+namespace rai::serialization {
 
 // ******************************************************************************** 省略時挙動
 
@@ -301,4 +301,4 @@ constexpr auto getInitialOmittedField(MemberPtr memberPtr, const char* keyName,
     return getField(memberPtr, keyName, converter, behavior);
 }
 
-}  // namespace rai::json
+}  // namespace rai::serialization

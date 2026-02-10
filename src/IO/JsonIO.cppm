@@ -12,19 +12,19 @@ module;
 #include <mutex>
 #include <future>
 
-export module rai.json.json_io;
+export module rai.serialization.json_io;
 
-import rai.json.json_converter;
-import rai.json.json_field_set;
-import rai.json.json_writer;
-import rai.json.json_parser;
-import rai.json.json_tokenizer;
-import rai.json.json_token_manager;
-import rai.json.reading_ahead_buffer;
-import rai.json.parallel_input_stream_source;
+import rai.serialization.json_converter;
+import rai.serialization.json_field_set;
+import rai.serialization.json_writer;
+import rai.serialization.json_parser;
+import rai.serialization.json_tokenizer;
+import rai.serialization.json_token_manager;
+import rai.serialization.reading_ahead_buffer;
+import rai.serialization.parallel_input_stream_source;
 import rai.common.thread_pool;
 
-namespace rai::json {
+namespace rai::serialization {
 
 static constexpr std::size_t smallFileThreshold = 10 * 1024; //< 小ファイルとみなす閾値（byte）
 static constexpr std::size_t aheadSize = 8;        //< 先読み8byte
@@ -400,4 +400,4 @@ void readJsonFile(const std::string& filename, T& out) {
     out.readJson(parser);
 }
 
-}  // namespace rai::json
+}  // namespace rai::serialization

@@ -12,9 +12,9 @@ module;
 #include <exception>
 #include <utility>
 
-export module rai.json.json_token_manager;
+export module rai.serialization.json_token_manager;
 
-export namespace rai::json {
+export namespace rai::serialization {
 
 // ******************************************************************************** トークン型定義（内部実装詳細）
 namespace json_token_detail {
@@ -173,4 +173,4 @@ private:
     std::deque<JsonToken> tokens_;  ///< トークン列（dequeで先頭popをO(1)に）
 };
 
-}  // namespace rai::json
+}  // namespace rai::serialization

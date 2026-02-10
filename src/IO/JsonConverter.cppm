@@ -16,15 +16,15 @@ module;
 #include <ranges>
 #include <span>
 
-export module rai.json.json_converter;
+export module rai.serialization.json_converter;
 
-import rai.json.json_writer;
-import rai.json.json_parser;
-import rai.json.json_token_manager;
+import rai.serialization.json_writer;
+import rai.serialization.json_parser;
+import rai.serialization.json_token_manager;
 
 import rai.collection.sorted_hash_array_map;
 
-export namespace rai::json {
+export namespace rai::serialization {
 
 // ******************************************************************************** concept
 
@@ -697,4 +697,4 @@ constexpr auto getVariantConverter(ElementConverterType elementConverter) {
         ElementConverter(std::move(elementConverter)));
 }
 
-}  // namespace rai::json
+}  // namespace rai::serialization

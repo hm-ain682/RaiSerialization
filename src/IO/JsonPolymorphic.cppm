@@ -21,16 +21,16 @@ module;
 #include <set>
 #include <unordered_set>
 
-export module rai.json.json_polymorphic;
+export module rai.serialization.json_polymorphic;
 
-import rai.json.json_writer;
-import rai.json.json_parser;
-import rai.json.json_token_manager;
-import rai.json.json_converter;
+import rai.serialization.json_writer;
+import rai.serialization.json_parser;
+import rai.serialization.json_token_manager;
+import rai.serialization.json_converter;
 
 import rai.collection.sorted_hash_array_map;
 
-namespace rai::json {
+namespace rai::serialization {
 
 // ------------------------- Polymorphic helpers and fields -------------------------
 
@@ -232,4 +232,4 @@ constexpr auto getPolymorphicArrayConverter(
 
 
 
-} // namespace rai::json
+} // namespace rai::serialization

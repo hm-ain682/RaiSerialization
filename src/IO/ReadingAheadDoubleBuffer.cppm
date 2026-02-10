@@ -7,9 +7,9 @@ module;
 #include <stdexcept>
 #include <vector>
 
-export module rai.json.reading_ahead_double_buffer;
+export module rai.serialization.reading_ahead_double_buffer;
 
-export namespace rai::json {
+export namespace rai::serialization {
 
 /// @brief 二重バッファで先読み機能を提供するクラス。
 /// @note 読み込み用と消費用の二重バッファで効率的にデータを処理する。
@@ -259,4 +259,4 @@ private:
     std::size_t readingValidSize_;  ///< 読み込みバッファの有効データ長。
 };
 
-}  // namespace rai::json
+}  // namespace rai::serialization

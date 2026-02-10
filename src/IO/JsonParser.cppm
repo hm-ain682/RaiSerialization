@@ -8,11 +8,11 @@ module;
 #include <variant>
 #include <vector>
 
-export module rai.json.json_parser;
+export module rai.serialization.json_parser;
 
-import rai.json.json_token_manager;
+import rai.serialization.json_token_manager;
 
-export namespace rai::json {
+export namespace rai::serialization {
 
 // @brief トークン管理型が満たすべきインターフェース
 
@@ -408,4 +408,4 @@ public:
     const std::vector<std::string>& unknownKeys() const { return unknownKeys_; }
 };
 
-}  // namespace rai::json
+}  // namespace rai::serialization

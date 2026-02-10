@@ -9,9 +9,9 @@ module;
 #include <string_view>
 #include <type_traits>
 
-export module rai.json.json_writer;
+export module rai.serialization.json_writer;
 
-export namespace rai::json {
+export namespace rai::serialization {
 
 // @brief JSON5出力用の簡易Writer。
 // JSON5形式でデータを出力する。
@@ -292,4 +292,4 @@ public:
 // @brief JsonWriterの既定型エイリアス（識別子のみ許可）
 using JsonWriter = JsonWriterBase<false>;
 
-}  // namespace rai::json
+}  // namespace rai::serialization

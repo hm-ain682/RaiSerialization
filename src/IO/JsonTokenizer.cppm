@@ -26,11 +26,11 @@ module;
     case '6': case '7': case '8': case '9'
 #define CASE_PART_DIGITS case '0': CASE_PART_DIGITS19
 
-export module rai.json.json_tokenizer;
+export module rai.serialization.json_tokenizer;
 
-import rai.json.json_token_manager;
+import rai.serialization.json_token_manager;
 
-export namespace rai::json {
+export namespace rai::serialization {
 
 // 入力文字列取得元のconcept
 template <typename T>
@@ -880,4 +880,4 @@ private:
     MessageOutput& warningOutput_;      ///< 警告メッセージ出力先
 };
 
-}  // namespace rai::json
+}  // namespace rai::serialization

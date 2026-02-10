@@ -1,12 +1,12 @@
-import rai.json.json_field;
-import rai.json.json_converter;
-import rai.json.json_polymorphic;
-import rai.json.json_writer;
-import rai.json.json_parser;
-import rai.json.json_field_set;
-import rai.json.json_io;
-import rai.json.test_helper;
-import rai.json.json_token_manager;
+import rai.serialization.json_field;
+import rai.serialization.json_converter;
+import rai.serialization.json_polymorphic;
+import rai.serialization.json_writer;
+import rai.serialization.json_parser;
+import rai.serialization.json_field_set;
+import rai.serialization.json_io;
+import rai.serialization.test_helper;
+import rai.serialization.json_token_manager;
 import rai.collection.sorted_hash_array_map;
 #include <gtest/gtest.h>
 #include <string>
@@ -17,8 +17,8 @@ import rai.collection.sorted_hash_array_map;
 #include <set>
 #include <utility>
 
-using namespace rai::json;
-using namespace rai::json::test;
+using namespace rai::serialization;
+using namespace rai::serialization::test;
 
 /// @brief テスト用の構造体A。
 struct A {

@@ -59,17 +59,17 @@ target_link_libraries(app PRIVATE RaiJson::RaiJson)
 A minimal example showing field-based reflection:
 
 ```cpp
-import rai.json.json_field;
-import rai.json.json_field_set;
-import rai.json.json_io;
+import rai.serialization.json_field;
+import rai.serialization.json_field_set;
+import rai.serialization.json_io;
 
 struct Point {
     int x{};
     int y{};
-    const rai::json::IJsonFieldSet& jsonFields() const {
-        static const auto fields = rai::json::getFieldSet(
-            rai::json::getRequiredField(&Point::x, "x"),
-            rai::json::getRequiredField(&Point::y, "y")
+    const rai::serialization::IJsonFieldSet& jsonFields() const {
+        static const auto fields = rai::serialization::getFieldSet(
+            rai::serialization::getRequiredField(&Point::x, "x"),
+            rai::serialization::getRequiredField(&Point::y, "y")
         );
         return fields;
     }
@@ -77,10 +77,10 @@ struct Point {
 
 int main() {
     Point p{1, 2};
-    std::string json = rai::json::getJsonContent(p); // {x:1,y:2}
+    std::string json = rai::serialization::getJsonContent(p); // {x:1,y:2}
 
     Point out{};
-    rai::json::readJsonString(json, out);
+    rai::serialization::readJsonString(json, out);
 }
 ```
 
@@ -88,15 +88,15 @@ int main() {
 File loading supports sequential, parallel, and auto-selected paths. You can also collect unknown keys.
 
 ```cpp
-import rai.json.json_field;
-import rai.json.json_field_set;
-import rai.json.json_io;
+import rai.serialization.json_field;
+import rai.serialization.json_field_set;
+import rai.serialization.json_io;
 
 struct Config {
     int value = 0;
-    const rai::json::IJsonFieldSet& jsonFields() const {
-        static const auto fields = rai::json::getFieldSet(
-            rai::json::getRequiredField(&Config::value, "value")
+    const rai::serialization::IJsonFieldSet& jsonFields() const {
+        static const auto fields = rai::serialization::getFieldSet(
+            rai::serialization::getRequiredField(&Config::value, "value")
         );
         return fields;
     }
@@ -107,11 +107,11 @@ int main() {
     std::vector<std::string> unknownKeys;
 
     // Auto-select (small files -> sequential, large -> parallel)
-    rai::json::readJsonFile("config.json", cfg, unknownKeys);
+    rai::serialization::readJsonFile("config.json", cfg, unknownKeys);
 
     // Explicit modes
-    rai::json::readJsonFileSequential("config.json", cfg);
-    rai::json::readJsonFileParallel("config.json", cfg);
+    rai::serialization::readJsonFileSequential("config.json", cfg);
+    rai::serialization::readJsonFileParallel("config.json", cfg);
 }
 ```
 
@@ -120,23 +120,23 @@ Serialize enum members as strings by defining `EnumEntry` values and using `getR
 `getEnumConverter` accepts C arrays, `std::array`, or `std::span` of `EnumEntry`.
 
 ```cpp
-import rai.json.json_field;
-import rai.json.json_field_set;
-import rai.json.json_io;
+import rai.serialization.json_field;
+import rai.serialization.json_field_set;
+import rai.serialization.json_io;
 
 enum class Color { Red, Green, Blue };
 
 struct ColorHolder {
     Color color = Color::Red;
 
-    const rai::json::IJsonFieldSet& jsonFields() const {
-        static const auto colorConverter = rai::json::getEnumConverter({
+    const rai::serialization::IJsonFieldSet& jsonFields() const {
+        static const auto colorConverter = rai::serialization::getEnumConverter({
             { Color::Red,   "red" },
             { Color::Green, "green" },
             { Color::Blue,  "blue" }
         });
-        static const auto fields = rai::json::getFieldSet(
-            rai::json::getRequiredField(&ColorHolder::color, "color", colorConverter)
+        static const auto fields = rai::serialization::getFieldSet(
+            rai::serialization::getRequiredField(&ColorHolder::color, "color", colorConverter)
         );
         return fields;
     }
@@ -148,22 +148,22 @@ Register derived-type factory functions in a map and the serializer will include
 The type key can be customized when creating the polymorphic field.
 
 ```cpp
-import rai.json.json_field;
-import rai.json.json_field_set;
-import rai.json.json_io;
+import rai.serialization.json_field;
+import rai.serialization.json_field_set;
+import rai.serialization.json_io;
 import rai.collection.sorted_hash_array_map;
 #include <memory>
 
 struct Shape {
     virtual ~Shape() = default;
-    virtual const rai::json::IJsonFieldSet& jsonFields() const = 0;
+    virtual const rai::serialization::IJsonFieldSet& jsonFields() const = 0;
 };
 
 struct Circle : public Shape {
     double radius = 0.0;
-    const rai::json::IJsonFieldSet& jsonFields() const override {
-        static const auto fields = rai::json::getFieldSet(
-            rai::json::getRequiredField(&Circle::radius, "radius")
+    const rai::serialization::IJsonFieldSet& jsonFields() const override {
+        static const auto fields = rai::serialization::getFieldSet(
+            rai::serialization::getRequiredField(&Circle::radius, "radius")
         );
         return fields;
     }
@@ -172,10 +172,10 @@ struct Circle : public Shape {
 struct Rectangle : public Shape {
     double width = 0.0;
     double height = 0.0;
-    const rai::json::IJsonFieldSet& jsonFields() const override {
-        static const auto fields = rai::json::getFieldSet(
-            rai::json::getRequiredField(&Rectangle::width, "width"),
-            rai::json::getRequiredField(&Rectangle::height, "height")
+    const rai::serialization::IJsonFieldSet& jsonFields() const override {
+        static const auto fields = rai::serialization::getFieldSet(
+            rai::serialization::getRequiredField(&Rectangle::width, "width"),
+            rai::serialization::getRequiredField(&Rectangle::height, "height")
         );
         return fields;
     }
@@ -191,16 +191,16 @@ struct Drawing {
     std::unique_ptr<Shape> mainShape;
     std::vector<std::unique_ptr<Shape>> shapes;
 
-    const rai::json::IJsonFieldSet& jsonFields() const {
+    const rai::serialization::IJsonFieldSet& jsonFields() const {
         static const auto mainShapeConverter =
-            rai::json::getPolymorphicConverter<std::unique_ptr<Shape>>(
+            rai::serialization::getPolymorphicConverter<std::unique_ptr<Shape>>(
                 shapeEntriesMap, "kind");
         static const auto shapesConverter =
-            rai::json::getPolymorphicArrayConverter<decltype(shapes)>(
+            rai::serialization::getPolymorphicArrayConverter<decltype(shapes)>(
                 shapeEntriesMap, "kind");
-        static const auto fields = rai::json::getFieldSet(
-            rai::json::getRequiredField(&Drawing::mainShape, "mainShape", mainShapeConverter),
-            rai::json::getRequiredField(&Drawing::shapes, "shapes", shapesConverter)
+        static const auto fields = rai::serialization::getFieldSet(
+            rai::serialization::getRequiredField(&Drawing::mainShape, "mainShape", mainShapeConverter),
+            rai::serialization::getRequiredField(&Drawing::shapes, "shapes", shapesConverter)
         );
         return fields;
     }
@@ -213,22 +213,22 @@ struct Drawing {
 If you prefer full control, implement `void writeJson(JsonWriter&) const` and `void readJson(JsonParser&)` on your type. These methods are also used automatically when such types are encountered inside `JsonField`-driven structures.
 
 ```cpp
-import rai.json.json_writer;
-import rai.json.json_parser;
-import rai.json.json_io;
+import rai.serialization.json_writer;
+import rai.serialization.json_parser;
+import rai.serialization.json_io;
 
 struct CustomData {
     int value = 0;
     std::string name;
 
-    void writeJson(rai::json::JsonWriter& writer) const {
+    void writeJson(rai::serialization::JsonWriter& writer) const {
         writer.startObject();
         writer.key("value"); writer.writeObject(value);
         writer.key("name");  writer.writeObject(name);
         writer.endObject();
     }
 
-    void readJson(rai::json::JsonParser& parser) {
+    void readJson(rai::serialization::JsonParser& parser) {
         parser.startObject();
         while (!parser.nextIsEndObject()) {
             auto key = parser.nextKey();

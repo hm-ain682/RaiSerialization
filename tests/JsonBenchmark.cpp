@@ -1,17 +1,17 @@
 ﻿// @file JsonBenchmark.cpp
 // @brief JSONパーサーのパフォーマンス計測
 
-import rai.json.json_field;
-import rai.json.json_converter;
-import rai.json.json_writer;
-import rai.json.json_parser;
-import rai.json.json_tokenizer;
-import rai.json.json_token_manager;
-import rai.json.json_field_set;
-import rai.json.json_io;
-import rai.json.json_polymorphic;
-import rai.json.parallel_input_stream_source;
-import rai.json.reading_ahead_buffer;
+import rai.serialization.json_field;
+import rai.serialization.json_converter;
+import rai.serialization.json_writer;
+import rai.serialization.json_parser;
+import rai.serialization.json_tokenizer;
+import rai.serialization.json_token_manager;
+import rai.serialization.json_field_set;
+import rai.serialization.json_io;
+import rai.serialization.json_polymorphic;
+import rai.serialization.parallel_input_stream_source;
+import rai.serialization.reading_ahead_buffer;
 import rai.collection.sorted_hash_array_map;
 #include <gtest/gtest.h>
 #include <chrono>
@@ -26,7 +26,7 @@ import rai.collection.sorted_hash_array_map;
 #include <cmath>
 #include <utility>
 
-using namespace rai::json;
+using namespace rai::serialization;
 
 // ********************************************************************************
 // ポリモーフィック型の登録（前方宣言）

@@ -5,9 +5,9 @@ module;
 #include <string>
 #include <cassert>
 
-export module rai.json.reading_ahead_buffer;
+export module rai.serialization.reading_ahead_buffer;
 
-export namespace rai::json {
+export namespace rai::serialization {
 
 /// @brief 先読みバッファ。
 class ReadingAheadBuffer {
@@ -58,4 +58,4 @@ class ReadingAheadBuffer {
     std::size_t aheadSize_;          ///< 先読みbyte数。
 };
 
-}  // namespace rai::json
+}  // namespace rai::serialization
