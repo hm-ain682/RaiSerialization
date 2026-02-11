@@ -53,6 +53,10 @@ write_basic_package_version_file(
     VERSION ${PROJECT_VERSION}
     COMPATIBILITY SameMajorVersion)
 
+# Make the install-time option visible to the package config template so
+# @RAISERIALIZATION_INSTALL_TEST_HELPER@ is substituted correctly.
+set(RAISERIALIZATION_INSTALL_TEST_HELPER ${RAISERIALIZATION_BUILD_TEST_HELPER})
+
 configure_package_config_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/RaiSerializationConfig.cmake.in"
     "${CMAKE_CURRENT_BINARY_DIR}/RaiSerializationConfig.cmake"
@@ -61,11 +65,6 @@ install(FILES
     "${CMAKE_CURRENT_BINARY_DIR}/RaiSerializationConfig.cmake"
     "${CMAKE_CURRENT_BINARY_DIR}/RaiSerializationConfigVersion.cmake"
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/RaiSerialization)
-
-set(RAISERIALIZATION_INSTALL_TEST_HELPER ${RAISERIALIZATION_BUILD_TEST_HELPER})
-# Test helper moved to tests/CMakeLists.txt to keep all test-related logic in one place.
-# See tests/CMakeLists.txt for FetchContent/GTest setup and the RaiSerializationTest target.
-
 
 if(RAISERIALIZATION_BUILD_TESTS)
     enable_testing()

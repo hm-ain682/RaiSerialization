@@ -55,6 +55,22 @@ add_executable(app main.cpp)
 target_link_libraries(app PRIVATE RaiSerialization::RaiSerialization)
 ```
 
+### Using the test helper (`JsonTestHelper.cppm`) 🧩
+If you enable the test helper at install time, the package will export a helper target you can link against from downstream projects:
+
+- Enable on install: configure with `-DRAISERIALIZATION_BUILD_TEST_HELPER=ON` (or set the option in your install step).
+- After `make install` (or `cmake --build --target install`), use in your project:
+
+```cmake
+find_package(RaiSerialization REQUIRED)
+add_executable(my_tests tests.cpp)
+# Link the helper test module (provides test utilities implemented in JsonTestHelper.cppm)
+target_link_libraries(my_tests PRIVATE RaiSerialization::RaiSerializationTest GTest::gtest)
+```
+
+Note: `RaiSerialization::RaiSerializationTest` is only available when the test helper was installed. In that case, the generated package config will also add a `find_dependency(GTest)` entry so GTest is discovered automatically.
+
+
 ## Quick example 📄
 A minimal example showing field-based reflection:
 

@@ -1,5 +1,9 @@
 @PACKAGE_INIT@
 
+# If the package was installed with the test helper, consumers may link
+# to `RaiSerialization::RaiSerializationTest` to get access to test utilities
+# (implemented in `JsonTestHelper.cppm`). When installed, the config will
+# include the GTest dependency automatically (via find_dependency(GTest)).
 if(@RAISERIALIZATION_INSTALL_TEST_HELPER@)
 	include(CMakeFindDependencyMacro)
 	find_dependency(GTest)
