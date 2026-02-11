@@ -2,12 +2,11 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "configure (clang, ninja, debug)",
+      "label": "configure (clang, debug)",
       "type": "shell",
       "command": "cmake",
       "args": [
-        "--preset",
-        "clang-ninja"
+        "--preset", "clang"
       ],
       "group": "build",
       "presentation": {
@@ -17,16 +16,13 @@
       "problemMatcher": []
     },
     {
-      "label": "build RaiJson_JsonTest",
+      "label": "build RaiSerialization_JsonTest",
       "type": "shell",
       "command": "cmake",
       "args": [
-        "--build",
-        "${workspaceFolder}/build/clang-ninja",
-        "--config",
-        "Debug",
-        "--target",
-        "RaiJson_JsonTest"
+        "--build", "${workspaceFolder}/build/clang",
+        "--config", "Debug",
+        "--target", "RaiSerialization_JsonTest"
       ],
       "group": {
         "kind": "build",
@@ -39,16 +35,14 @@
       "problemMatcher": ["$msCompile"]
     },
     {
-      "label": "build RaiJson_JsonBenchmark",
+      "label": "build RaiSerialization_JsonBenchmark",
       "type": "shell",
       "command": "cmake",
       "args": [
         "--build",
-        "${workspaceFolder}/build/clang-ninja",
-        "--config",
-        "Debug",
-        "--target",
-        "RaiJson_JsonBenchmark"
+        "${workspaceFolder}/build/clang",
+        "--config", "Debug",
+        "--target", "RaiSerialization_JsonBenchmark"
       ],
       "group": {
         "kind": "build",

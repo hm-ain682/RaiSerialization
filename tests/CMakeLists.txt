@@ -1,19 +1,19 @@
-﻿# Tests for RaiJson (uses googletest if needed)
+﻿# Tests for RaiSerialization (uses googletest if needed)
 
 # Make tests optional and fall back to fetching googletest if necessary.
 include(FetchContent)
 
 # Provide option to enable/disable tests from superbuild
-option(RAIJSON_BUILD_TESTS "Build tests for RaiJson" ON)
+option(RAISERIALIZATION_BUILD_TESTS "Build tests for RaiSerialization" ON)
 
-if(NOT RAIJSON_BUILD_TESTS)
+if(NOT RAISERIALIZATION_BUILD_TESTS)
   return()
 endif()
 
 enable_testing()
 
 # If gtest is not available, download via FetchContent
-if(NOT TARGET gtest_main)
+if(NOT TARGET GTest::gtest_main AND NOT TARGET gtest_main)
   FetchContent_Declare(googletest
     URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
   )
@@ -33,16 +33,36 @@ foreach(gtest_target gtest gtest_main gmock gmock_main)
   endif()
 endforeach()
 
-# Build the more extensive tests
-add_executable(RaiJson_JsonTest JsonTest.cpp)
-target_sources(RaiJson_JsonTest PRIVATE
-  FILE_SET CXX_MODULES FILES
-    JsonTestHelper.cppm
+# Create test helper library (moved from top-level)
+add_library(RaiSerializationTest)
+target_sources(RaiSerializationTest
+    PUBLIC
+        FILE_SET cxx_modules TYPE CXX_MODULES FILES
+            JsonTestHelper.cppm
 )
-target_link_libraries(RaiJson_JsonTest PRIVATE RaiJson::RaiJson gtest_main)
-target_sources(RaiJson_JsonTest PRIVATE JsonEnumFieldTest.cpp)
-add_test(NAME RaiJson_JsonTest COMMAND RaiJson_JsonTest)
+# Ensure GTest import names exist if the downloaded targets are present
+if(TARGET gtest AND NOT TARGET GTest::gtest)
+    add_library(GTest::gtest ALIAS gtest)
+endif()
+if(TARGET gtest_main AND NOT TARGET GTest::gtest_main)
+    add_library(GTest::gtest_main ALIAS gtest_main)
+endif()
 
-add_executable(RaiJson_JsonBenchmark JsonBenchmark.cpp)
-target_link_libraries(RaiJson_JsonBenchmark PRIVATE RaiJson::RaiJson gtest_main)
-add_test(NAME RaiJson_JsonBenchmark COMMAND RaiJson_JsonBenchmark)
+target_link_libraries(RaiSerializationTest PUBLIC RaiSerialization::RaiSerialization GTest::gtest)
+add_library(RaiSerialization::RaiSerializationTest ALIAS RaiSerializationTest)
+
+if(RAISERIALIZATION_BUILD_TEST_HELPER)
+    install(TARGETS RaiSerializationTest
+        EXPORT RaiSerializationTargets
+        FILE_SET cxx_modules DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rai/serialization/test)
+endif()
+
+# Build the more extensive tests
+add_executable(RaiSerialization_JsonTest JsonTest.cpp)
+target_link_libraries(RaiSerialization_JsonTest PRIVATE RaiSerialization::RaiSerializationTest GTest::gtest_main)
+target_sources(RaiSerialization_JsonTest PRIVATE JsonEnumFieldTest.cpp)
+add_test(NAME RaiSerialization_JsonTest COMMAND RaiSerialization_JsonTest)
+
+add_executable(RaiSerialization_JsonBenchmark JsonBenchmark.cpp)
+target_link_libraries(RaiSerialization_JsonBenchmark PRIVATE RaiSerialization::RaiSerialization GTest::gtest_main)
+add_test(NAME RaiSerialization_JsonBenchmark COMMAND RaiSerialization_JsonBenchmark)

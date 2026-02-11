@@ -1,6 +1,6 @@
-# RaiJson
+# RaiSerialization
 
-**RaiJson** is a small, header-equivalent C++23 JSON5 toolkit implemented using C++ modules. It focuses on
+**RaiSerialization** is a small, header-equivalent C++23 JSON5 toolkit implemented using C++ modules. It focuses on
 fast, dependency-free parsing and convenient, declarative mappings between C++ types and JSON.
 
 ## Key features ✅
@@ -29,7 +29,7 @@ cmake --build --preset clang-ninja-debug
 Build a specific test target (example):
 
 ```powershell
-cmake --build --preset clang-ninja-debug --target RaiJson_JsonTest
+cmake --build --preset clang-ninja-debug --target RaiSerialization_JsonTest
 ```
 
 ## Tests 🧪
@@ -50,9 +50,9 @@ cmake --build build/clang-ninja --target install
 In a downstream CMake project:
 
 ```cmake
-find_package(RaiJson REQUIRED)
+find_package(RaiSerialization REQUIRED)
 add_executable(app main.cpp)
-target_link_libraries(app PRIVATE RaiJson::RaiJson)
+target_link_libraries(app PRIVATE RaiSerialization::RaiSerialization)
 ```
 
 ## Quick example 📄

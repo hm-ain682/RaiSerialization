@@ -1,0 +1,12 @@
+@PACKAGE_INIT@
+
+if(@RAISERIALIZATION_INSTALL_TEST_HELPER@)
+	include(CMakeFindDependencyMacro)
+	find_dependency(GTest)
+endif()
+
+include("${CMAKE_CURRENT_LIST_DIR}/RaiSerializationTargets.cmake")
+
+set(RAISERIALIZATION_CXX_STANDARD 23)
+
+check_required_components(RaiSerialization)

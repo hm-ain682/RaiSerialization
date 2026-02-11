@@ -1,5 +1,5 @@
 ﻿cmake_minimum_required(VERSION 3.28)
-project(RaiJson VERSION 0.1.0 LANGUAGES CXX)
+project(RaiSerialization VERSION 0.1.0 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -7,12 +7,18 @@ include(CMakePackageConfigHelpers)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Create library target that contains the JSON modules
-add_library(RaiJson)
+# Allow tests
+option(RAISERIALIZATION_BUILD_TESTS "Build tests for RaiSerialization" OFF)
 
-# C++ module interface units and sources for RaiJson
+# Allow installing test helper module for external programs
+option(RAISERIALIZATION_BUILD_TEST_HELPER "Build and install test helper module" OFF)
+
+# Create library target that contains the serialization modules
+add_library(RaiSerialization)
+
+# C++ module interface units and sources for RaiSerialization
 # Use FILE_SET for module interface units so the generator produces proper module maps.
-target_sources(RaiJson
+target_sources(RaiSerialization
     PUBLIC
         FILE_SET cxx_modules TYPE CXX_MODULES FILES
             src/Common/SortedHashArrayMap.cppm
@@ -31,38 +37,37 @@ target_sources(RaiJson
             src/IO/JsonIO.cppm
 )
 
-
 # Expose the target so other projects can link against it
-add_library(RaiJson::RaiJson ALIAS RaiJson)
+add_library(RaiSerialization::RaiSerialization ALIAS RaiSerialization)
 
 # Install library, module interface units, and export targets for find_package.
-install(TARGETS RaiJson
-    EXPORT RaiJsonTargets
-    FILE_SET cxx_modules DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rai/json)
-
-install(EXPORT RaiJsonTargets
-    FILE RaiJsonTargets.cmake
-    NAMESPACE RaiJson::
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/RaiJson)
-
+install(TARGETS RaiSerialization
+    EXPORT RaiSerializationTargets
+    FILE_SET cxx_modules DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rai/serialization)
+install(EXPORT RaiSerializationTargets
+    FILE RaiSerializationTargets.cmake
+    NAMESPACE RaiSerialization::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/RaiSerialization)
 write_basic_package_version_file(
-    "${CMAKE_CURRENT_BINARY_DIR}/RaiJsonConfigVersion.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/RaiSerializationConfigVersion.cmake"
     VERSION ${PROJECT_VERSION}
     COMPATIBILITY SameMajorVersion)
 
 configure_package_config_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/RaiJsonConfig.cmake.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/RaiJsonConfig.cmake"
-    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/RaiJson)
-
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/RaiSerializationConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/RaiSerializationConfig.cmake"
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/RaiSerialization)
 install(FILES
-    "${CMAKE_CURRENT_BINARY_DIR}/RaiJsonConfig.cmake"
-    "${CMAKE_CURRENT_BINARY_DIR}/RaiJsonConfigVersion.cmake"
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/RaiJson)
+    "${CMAKE_CURRENT_BINARY_DIR}/RaiSerializationConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/RaiSerializationConfigVersion.cmake"
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/RaiSerialization)
 
-# Allow tests
-option(RAIJSON_BUILD_TESTS "Build tests for RaiJson" OFF)
-if(RAIJSON_BUILD_TESTS)
+set(RAISERIALIZATION_INSTALL_TEST_HELPER ${RAISERIALIZATION_BUILD_TEST_HELPER})
+# Test helper moved to tests/CMakeLists.txt to keep all test-related logic in one place.
+# See tests/CMakeLists.txt for FetchContent/GTest setup and the RaiSerializationTest target.
+
+
+if(RAISERIALIZATION_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()
