@@ -33,7 +33,7 @@ target_sources(RaiSerialization
             src/IO/ObjectConverter.cppm
             src/IO/JsonField.cppm
             src/IO/PolymorphicConverter.cppm
-            src/IO/ObjectBridge.cppm
+            src/IO/ObjectSerializer.cppm
             src/IO/JsonIO.cppm
 )
 

@@ -7,7 +7,7 @@ import rai.serialization.json_writer;
 import rai.serialization.json_parser;
 import rai.serialization.json_tokenizer;
 import rai.serialization.token_manager;
-import rai.serialization.object_bridge;
+import rai.serialization.object_serializer;
 import rai.serialization.json_io;
 import rai.serialization.polymorphic_converter;
 import rai.serialization.parallel_input_stream_source;
@@ -47,7 +47,7 @@ struct SimpleData {
     bool flag = false;
     std::string name;
 
-    const ObjectBridge& jsonFields() const {
+    const ObjectSerializer& jsonFields() const {
         static const auto fields = getFieldSet(
             getRequiredField(&SimpleData::id, "id"),
             getRequiredField(&SimpleData::value, "value"),
@@ -64,7 +64,7 @@ struct VectorData {
     std::vector<int> numbers;
     std::vector<std::string> tags;
 
-    const ObjectBridge& jsonFields() const {
+    const ObjectSerializer& jsonFields() const {
         static const auto numbersConverter = getContainerConverter<decltype(numbers)>();
         static const auto tagsConverter = getContainerConverter<decltype(tags)>();
         static const auto fields = getFieldSet(
@@ -83,7 +83,7 @@ struct BaseNode {
 
     virtual ~BaseNode() = default;
 
-    virtual const ObjectBridge& jsonFields() const {
+    virtual const ObjectSerializer& jsonFields() const {
         static const auto fields = getFieldSet(
             getDefaultOmittedField(&BaseNode::type, "type", std::string{}),
             getRequiredField(&BaseNode::nodeId, "nodeId")
@@ -96,7 +96,7 @@ struct BaseNode {
 struct DataNode : public BaseNode {
     double dataValue = 0.0;
 
-    const ObjectBridge& jsonFields() const override {
+    const ObjectSerializer& jsonFields() const override {
         static const auto fields = getFieldSet(
             getDefaultOmittedField(&BaseNode::type, "type", std::string{}),
             getRequiredField(&BaseNode::nodeId, "nodeId"),
@@ -110,7 +110,7 @@ struct DataNode : public BaseNode {
 struct ContainerNode : public BaseNode {
     std::vector<std::string> children;
 
-    const ObjectBridge& jsonFields() const override {
+    const ObjectSerializer& jsonFields() const override {
         static const auto childrenConverter = getContainerConverter<decltype(children)>();
         static const auto fields = getFieldSet(
             getDefaultOmittedField(&BaseNode::type, "type", std::string{}),
@@ -144,7 +144,7 @@ struct ComplexData {
     std::vector<SimpleData> items;
     std::vector<VectorData> collections;
 
-    const ObjectBridge& jsonFields() const {
+    const ObjectSerializer& jsonFields() const {
         static const auto itemsConverter = getContainerConverter<decltype(items)>();
         static const auto collectionsConverter = getContainerConverter<decltype(collections)>();
         static const auto nodeConverter = getPolymorphicConverter<decltype(node)>(

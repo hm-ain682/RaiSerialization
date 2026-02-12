@@ -76,13 +76,13 @@ A minimal example showing field-based reflection:
 
 ```cpp
 import rai.serialization.json_field;
-import rai.serialization.object_bridge;
+import rai.serialization.object_serializer;
 import rai.serialization.json_io;
 
 struct Point {
     int x{};
     int y{};
-    const rai::serialization::ObjectBridge& jsonFields() const {
+    const rai::serialization::ObjectSerializer& jsonFields() const {
         static const auto fields = rai::serialization::getFieldSet(
             rai::serialization::getRequiredField(&Point::x, "x"),
             rai::serialization::getRequiredField(&Point::y, "y")
@@ -105,12 +105,12 @@ File loading supports sequential, parallel, and auto-selected paths. You can als
 
 ```cpp
 import rai.serialization.json_field;
-import rai.serialization.object_bridge;
+import rai.serialization.object_serializer;
 import rai.serialization.json_io;
 
 struct Config {
     int value = 0;
-    const rai::serialization::ObjectBridge& jsonFields() const {
+    const rai::serialization::ObjectSerializer& jsonFields() const {
         static const auto fields = rai::serialization::getFieldSet(
             rai::serialization::getRequiredField(&Config::value, "value")
         );
@@ -137,7 +137,7 @@ Serialize enum members as strings by defining `EnumEntry` values and using `getR
 
 ```cpp
 import rai.serialization.json_field;
-import rai.serialization.object_bridge;
+import rai.serialization.object_serializer;
 import rai.serialization.json_io;
 
 enum class Color { Red, Green, Blue };
@@ -145,7 +145,7 @@ enum class Color { Red, Green, Blue };
 struct ColorHolder {
     Color color = Color::Red;
 
-    const rai::serialization::ObjectBridge& jsonFields() const {
+    const rai::serialization::ObjectSerializer& jsonFields() const {
         static const auto colorConverter = rai::serialization::getEnumConverter({
             { Color::Red,   "red" },
             { Color::Green, "green" },
@@ -165,19 +165,19 @@ The type key can be customized when creating the polymorphic field.
 
 ```cpp
 import rai.serialization.json_field;
-import rai.serialization.object_bridge;
+import rai.serialization.object_serializer;
 import rai.serialization.json_io;
 import rai.collection.sorted_hash_array_map;
 #include <memory>
 
 struct Shape {
     virtual ~Shape() = default;
-    virtual const rai::serialization::ObjectBridge& jsonFields() const = 0;
+    virtual const rai::serialization::ObjectSerializer& jsonFields() const = 0;
 };
 
 struct Circle : public Shape {
     double radius = 0.0;
-    const rai::serialization::ObjectBridge& jsonFields() const override {
+    const rai::serialization::ObjectSerializer& jsonFields() const override {
         static const auto fields = rai::serialization::getFieldSet(
             rai::serialization::getRequiredField(&Circle::radius, "radius")
         );
@@ -188,7 +188,7 @@ struct Circle : public Shape {
 struct Rectangle : public Shape {
     double width = 0.0;
     double height = 0.0;
-    const rai::serialization::ObjectBridge& jsonFields() const override {
+    const rai::serialization::ObjectSerializer& jsonFields() const override {
         static const auto fields = rai::serialization::getFieldSet(
             rai::serialization::getRequiredField(&Rectangle::width, "width"),
             rai::serialization::getRequiredField(&Rectangle::height, "height")
@@ -207,7 +207,7 @@ struct Drawing {
     std::unique_ptr<Shape> mainShape;
     std::vector<std::unique_ptr<Shape>> shapes;
 
-    const rai::serialization::ObjectBridge& jsonFields() const {
+    const rai::serialization::ObjectSerializer& jsonFields() const {
         static const auto mainShapeConverter =
             rai::serialization::getPolymorphicConverter<std::unique_ptr<Shape>>(
                 shapeEntriesMap, "kind");
@@ -271,7 +271,7 @@ struct CustomData {
 - `src/IO/ObjectConverter.cppm`: Converters for primitives, enums, containers, pointers, and custom types.
 - `src/IO/PolymorphicConverter.cppm`: Polymorphic converters with type tags.
 - `src/IO/JsonField.cppm`: Field descriptors and omit behaviors.
-- `src/IO/ObjectBridge.cppm`: Field-set reflection and (de)serialization glue.
+- `src/IO/ObjectSerializer.cppm`: Field-set reflection and (de)serialization glue.
 - `src/IO/JsonIO.cppm`: High-level helpers for reading/writing strings, files, and streams.
 
 ---

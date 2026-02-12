@@ -1,4 +1,4 @@
-// @file ObjectBridge.cppm
+// @file ObjectSerializer.cppm
 // @brief JSONフィールドセットの定義。構造体とJSONの相互変換を提供する。
 
 module;
@@ -25,17 +25,17 @@ import rai.collection.sorted_hash_array_map;
 import rai.serialization.json_writer;
 import rai.serialization.json_parser;
 import rai.serialization.token_manager;
-export module rai.serialization.object_bridge;
+export module rai.serialization.object_serializer;
 
 namespace rai::serialization {
 
 // ******************************************************************************** 基底インターフェース
 
-/// @brief JSONフィールドセットの型消去用インターフェース。
+/// @brief オブジェクトを永続化するクラス。
 /// @note 仮想関数の戻り値型として使用可能にするための基底クラス。
-export class ObjectBridge {
+export class ObjectSerializer {
 public:
-    virtual ~ObjectBridge() = default;
+    virtual ~ObjectSerializer() = default;
 
     /// @brief オブジェクトのフィールドのみを書き出す（startObject/endObjectなし）。
     /// @param writer 書き込み先のJsonWriter。
@@ -50,7 +50,7 @@ public:
     virtual void readFields(JsonParser& parser, void* obj) const = 0;
 };
 
-// ******************************************************************************** フィールドセット
+// ******************************************************************************** フィールド集合による永続化
 
 /// @brief JsonField互換のインターフェースを満たすか判定するconcept。
 /// @tparam Field 判定対象のフィールド型
@@ -63,19 +63,19 @@ concept IsReadWriteField = requires(const Field& field, JsonParser& parser, Json
     { field.key } -> std::convertible_to<const char*>;
 };
 
-/// @brief JSONフィールドセットの実装クラス。
+/// @brief フィールド集合による永続化クラス。
 /// @tparam Owner 所有者型。
 /// @tparam Fields フィールド型のパラメータパック。
 export template <typename Owner, typename... Fields>
-class FieldsObjectBridge : public ObjectBridge {
+class FieldsObjectSerializer : public ObjectSerializer {
 private:
     static_assert((IsReadWriteField<std::remove_cvref_t<Fields>> && ...),
-        "FieldsObjectBridge fields must satisfy JsonField-like interface");
+        "FieldsObjectSerializer fields must satisfy JsonField-like interface");
     static_assert((std::is_base_of_v<typename std::remove_cvref_t<Fields>::Owner, Owner> && ...),
-        "FieldsObjectBridge fields must be accessible from Owner type");
+        "FieldsObjectSerializer fields must be accessible from Owner type");
 
 public:
-    constexpr explicit FieldsObjectBridge(Fields... fields)
+    constexpr explicit FieldsObjectSerializer(Fields... fields)
         : fields_(std::move(fields)...) {
         // Build a small array of key/value descriptors from the stored fields_
         // so SortedHashArrayMap can be constructed from elements that have
@@ -112,7 +112,7 @@ public:
     /// @brief オブジェクトのフィールドをJSONから読み込む（startObject/endObjectなし）。
     /// @param parser 読み取り元のJsonParser互換オブジェクト。
     /// @param obj 対象オブジェクト。
-    /// @note FieldsObjectBridge内でフィールド探索と読み込みを行う。
+    /// @note FieldsObjectSerializer内でフィールド探索と読み込みを行う。
     void readFields(JsonParser& parser, void* obj) const override {
         auto& owner = *static_cast<Owner*>(obj);
         std::bitset<N_> seen{};
@@ -153,7 +153,7 @@ private:
     template <typename Visitor>
     void visitField(std::size_t index, Visitor&& visitor) const {
         if (index >= N_) {
-            throw std::out_of_range("FieldsObjectBridge::visitField index out of range");
+            throw std::out_of_range("FieldsObjectSerializer::visitField index out of range");
         }
         visitFieldImpl(index, std::forward<Visitor>(visitor), std::make_index_sequence<N_>{});
     }
@@ -165,7 +165,7 @@ private:
                              : false) ||
              ...);
         if (!matched) {
-            throw std::out_of_range("FieldsObjectBridge::visitField index out of range");
+            throw std::out_of_range("FieldsObjectSerializer::visitField index out of range");
         }
     }
 
@@ -218,16 +218,16 @@ struct DeduceOwner<Owner, Next, Rest...> {
     using type = typename DeduceOwner<Promoted, Rest...>::type;
 };
 
-/// @brief FieldsObjectBridgeを生成するヘルパー関数（所有者型を自動推論）。
+/// @brief FieldsObjectSerializerを生成するヘルパー関数（所有者型を自動推論）。
 /// @tparam Fields フィールド型のパラメータパック。
 /// @param fields フィールド定義群。
-/// @return 生成されたFieldsObjectBridge。
+/// @return 生成されたFieldsObjectSerializer。
 /// @note フィールドから所有者型を自動的に推論する。
 export template <typename... Fields>
 constexpr auto getFieldSet(Fields... fields) {
     static_assert(sizeof...(Fields) > 0, "getFieldSet requires at least one field");
     using Owner = typename DeduceOwner<typename std::remove_cvref_t<Fields>::Owner...>::type;
-    return FieldsObjectBridge<Owner, std::remove_cvref_t<Fields>...>(std::move(fields)...);
+    return FieldsObjectSerializer<Owner, std::remove_cvref_t<Fields>...>(std::move(fields)...);
 }
 
 }  // namespace rai::serialization
