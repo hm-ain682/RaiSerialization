@@ -52,6 +52,21 @@
         "panel": "shared"
       },
       "problemMatcher": ["$msCompile"]
+    },
+    {
+      "label": "test (clang, debug)",
+      "type": "shell",
+      "command": "ctest",
+      "args": [
+        "--preset",
+        "clang-debug"
+      ],
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
     }
   ]
 }

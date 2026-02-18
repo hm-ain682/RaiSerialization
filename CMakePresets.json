@@ -58,5 +58,25 @@
       "displayName": "Build (clang-cl) - Release",
       "configuration": "Release"
     }
+  ],
+  "testPresets": [
+    {
+      "name": "clang-debug",
+      "configurePreset": "clang",
+      "displayName": "Test (clang) - Debug",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "clang-cl-debug",
+      "configurePreset": "clang-cl",
+      "displayName": "Test (clang-cl) - Debug",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
   ]
 }

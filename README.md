@@ -37,8 +37,19 @@ Tests are built when `RAIJSON_BUILD_TESTS` is enabled (the configure presets ena
 Run the test suite with:
 
 ```powershell
-ctest --test-dir build/clang-ninja -C Debug --output-on-failure -V
+ctest --preset clang-debug
 ```
+
+Recommended workflow:
+
+```powershell
+cmake --preset clang
+cmake --build --preset clang-debug --target RaiSerialization_JsonTest
+ctest --preset clang-debug
+```
+
+Test logs are generated under `build/clang/Testing/Temporary/`.
+Avoid running bare `ctest` from arbitrary directories; use the preset above to keep test outputs under `build/`.
 
 ## Install and use with find_package 📦
 To install the library from a configured build directory:
@@ -264,15 +275,15 @@ struct CustomData {
 ## Source overview 🔍
 - `src/Common/SortedHashArrayMap.cppm`: Fixed-size hash + sorted array map for fast key lookup without allocations.
 - `src/Common/ThreadPool.cppm`: Lightweight task queue used by parallel I/O helpers.
-- `src/IO/JsonTokenizer.cppm`: JSON5 tokenizer with comment and whitespace handling.
-- `src/IO/TokenManager.cppm`: Token queue abstraction for thread-safe parsing.
-- `src/IO/JsonParser.cppm`: Token-based parser with strong type checks and unknown-key tracking.
-- `src/IO/JsonWriter.cppm`: JSON5 writer with identifier-aware key emission and escaping.
-- `src/IO/ObjectConverter.cppm`: Converters for primitives, enums, containers, pointers, and custom types.
-- `src/IO/PolymorphicConverter.cppm`: Polymorphic converters with type tags.
-- `src/IO/FieldSerializer.cppm`: Field descriptors and omit behaviors.
-- `src/IO/ObjectSerializer.cppm`: Field-set reflection and (de)serialization glue.
-- `src/IO/JsonIO.cppm`: High-level helpers for reading/writing strings, files, and streams.
+- `src/Serialization/Json/JsonTokenizer.cppm`: JSON5 tokenizer with comment and whitespace handling.
+- `src/Serialization/TokenManager.cppm`: Token queue abstraction for thread-safe parsing.
+- `src/Serialization/Json/JsonParser.cppm`: Token-based parser with strong type checks and unknown-key tracking.
+- `src/Serialization/Json/JsonWriter.cppm`: JSON5 writer with identifier-aware key emission and escaping.
+- `src/Serialization/ObjectConverter.cppm`: Converters for primitives, enums, containers, pointers, and custom types.
+- `src/Serialization/PolymorphicConverter.cppm`: Polymorphic converters with type tags.
+- `src/Serialization/FieldSerializer.cppm`: Field descriptors and omit behaviors.
+- `src/Serialization/ObjectSerializer.cppm`: Field-set reflection and (de)serialization glue.
+- `src/Serialization/Json/JsonIO.cppm`: High-level helpers for reading/writing strings, files, and streams.
 
 ---
 

@@ -23,18 +23,18 @@ target_sources(RaiSerialization
         FILE_SET cxx_modules TYPE CXX_MODULES FILES
             src/Common/SortedHashArrayMap.cppm
             src/Common/ThreadPool.cppm
-            src/IO/ReadingAheadBuffer.cppm
-            src/IO/ReadingAheadDoubleBuffer.cppm
-            src/IO/ParallelInputStreamSource.cppm
-            src/IO/JsonWriter.cppm
-            src/IO/JsonParser.cppm
-            src/IO/TokenManager.cppm
-            src/IO/JsonTokenizer.cppm
-            src/IO/ObjectConverter.cppm
-            src/IO/FieldSerializer.cppm
-            src/IO/PolymorphicConverter.cppm
-            src/IO/ObjectSerializer.cppm
-            src/IO/JsonIO.cppm
+            src/Serialization/ReadingAheadBuffer.cppm
+            src/Serialization/ReadingAheadDoubleBuffer.cppm
+            src/Serialization/ParallelInputStreamSource.cppm
+            src/Serialization/TokenManager.cppm
+            src/Serialization/ObjectConverter.cppm
+            src/Serialization/FieldSerializer.cppm
+            src/Serialization/PolymorphicConverter.cppm
+            src/Serialization/ObjectSerializer.cppm
+            src/Serialization/Json/JsonWriter.cppm
+            src/Serialization/Json/JsonParser.cppm
+            src/Serialization/Json/JsonTokenizer.cppm
+            src/Serialization/Json/JsonIO.cppm
 )
 
 # Expose the target so other projects can link against it
