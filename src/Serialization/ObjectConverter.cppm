@@ -19,7 +19,7 @@ module;
 export module rai.serialization.object_converter;
 
 import rai.serialization.json_writer;
-import rai.serialization.json_parser;
+import rai.serialization.parser;
 import rai.serialization.token_manager;
 
 import rai.collection.sorted_hash_array_map;
@@ -38,7 +38,7 @@ concept IsObjectConverter = std::is_class_v<Converter>
     && requires(const Converter& converter, JsonWriter& writer, const Value& value) {
         converter.write(writer, value);
     }
-    && requires(const Converter& converter, JsonParser& parser) {
+    && requires(const Converter& converter, Parser& parser) {
         { converter.read(parser) } -> std::same_as<Value>;
     };
 
@@ -56,7 +56,7 @@ struct FundamentalConverter {
         "FundamentalConverter requires T to be a fundamental JSON value or std::string");
     using Value = T;
     void write(JsonWriter& writer, const T& value) const { writer.writeObject(value); }
-    T read(JsonParser& parser) const {
+    T read(Parser& parser) const {
         T out{};
         parser.readTo(out);
         return out;
@@ -80,7 +80,7 @@ struct JsonFieldsConverter {
         fields.writeFields(writer, static_cast<const void*>(&obj));
         writer.endObject();
     }
-    T read(JsonParser& parser) const {
+    T read(Parser& parser) const {
         T obj{};
         auto& fields = obj.serializer();
         parser.startObject();
@@ -93,7 +93,7 @@ struct JsonFieldsConverter {
 /// @brief readJsonメソッドを持つ型を表すconcept。
 /// @tparam T 型。
 template <typename T>
-concept HasReadJson = requires(T& obj, JsonParser& parser) {
+concept HasReadJson = requires(T& obj, Parser& parser) {
     { obj.readJson(parser) } -> std::same_as<void>;
 };
 
@@ -113,7 +113,7 @@ struct ReadWriteJsonConverter {
     void write(JsonWriter& writer, const T& obj) const {
         obj.writeJson(writer);
     }
-    T read(JsonParser& parser) const {
+    T read(Parser& parser) const {
         T out{};
         out.readJson(parser);
         return out;
@@ -237,7 +237,7 @@ struct EnumConverter {
         throw std::runtime_error("Failed to convert enum to string");
     }
 
-    Enum read(JsonParser& parser) const {
+    Enum read(Parser& parser) const {
         std::string jsonValue;
         parser.readTo(jsonValue);
         if (auto v = map_.fromName(jsonValue)) {
@@ -308,7 +308,7 @@ struct ContainerConverter {
         writer.endArray();
     }
 
-    Container read(JsonParser& parser) const {
+    Container read(Parser& parser) const {
         Container out{};
         parser.startArray();
         while (!parser.nextIsEndArray()) {
@@ -397,7 +397,7 @@ struct UniquePtrConverter {
         targetConverter_.get().write(writer, *ptr);
     }
 
-    T read(JsonParser& parser) const {
+    T read(Parser& parser) const {
         if (parser.nextIsNull()) {
             parser.skipValue();
             return nullptr;
@@ -436,7 +436,7 @@ struct TokenConverter {
     using Value = ValueType;
 
     // 読み取り（各トークン種別ごとにオーバーライド可能）
-    Value readNull(JsonParser& parser) const {
+    Value readNull(Parser& parser) const {
         if constexpr (std::is_constructible_v<Value, std::nullptr_t>) {
             parser.skipValue();
             return Value(nullptr);
@@ -446,23 +446,23 @@ struct TokenConverter {
         }
     }
 
-    Value readBool(JsonParser& parser) const {
+    Value readBool(Parser& parser) const {
         return this->template read<bool>(parser, "Bool is not supported for TokenConverter");
     }
 
-    Value readInteger(JsonParser& parser) const {
+    Value readInteger(Parser& parser) const {
         return this->template read<int>(parser, "Integer is not supported for TokenConverter");
     }
 
-    Value readNumber(JsonParser& parser) const {
+    Value readNumber(Parser& parser) const {
         return this->template read<double>(parser, "Number is not supported for TokenConverter");
     }
 
-    Value readString(JsonParser& parser) const {
+    Value readString(Parser& parser) const {
         return this->template read<std::string>(parser, "String is not supported for TokenConverter");
     }
 
-    Value readStartObject(JsonParser& parser) const {
+    Value readStartObject(Parser& parser) const {
         if constexpr (HasSerializer<Value> || (HasReadJson<Value> && HasWriteJson<Value>)) {
             return getConverter<Value>().read(parser);
         }
@@ -471,13 +471,13 @@ struct TokenConverter {
         }
     }
 
-    Value readStartArray(JsonParser& parser) const {
+    Value readStartArray(Parser& parser) const {
         // デフォルトでは配列はサポートしない（必要なら派生で実装）
         throw std::runtime_error("Array is not supported for TokenConverter");
     }
 private:
     template <typename T>
-    static constexpr Value read(JsonParser& parser, const char* errorMessage) {
+    static constexpr Value read(Parser& parser, const char* errorMessage) {
         if constexpr (std::is_constructible_v<Value, T>) {
             T s;
             parser.readTo(s);
@@ -511,7 +511,7 @@ struct TokenDispatchConverter {
         : tokenConverter_(conv) {}
 
     /// @brief トークン種別に応じて適切な変換関数を呼び出して値を読み取る。
-    ValueType read(JsonParser& parser) const {
+    ValueType read(Parser& parser) const {
         switch (parser.nextTokenType()) {
         case JsonTokenType::Null:        return tokenConverter_.readNull(parser);
         case JsonTokenType::Bool:        return tokenConverter_.readBool(parser);
@@ -550,9 +550,9 @@ struct VariantElementConverter : TokenConverter<Variant> {
         "VariantElementConverter requires Variant to be a std::variant");
 
     /// @brief Null トークンを読み取り、variant を返す。
-    /// @param parser 読み取り元の JsonParser
+    /// @param parser 読み取り元の Parser
     /// @return 読み取った値
-    Variant readNull(JsonParser& parser) const {
+    Variant readNull(Parser& parser) const {
         (void)parser;
         if constexpr (canAssignNullptr()) {
             return Variant{ nullptr };
@@ -561,9 +561,9 @@ struct VariantElementConverter : TokenConverter<Variant> {
     }
 
     /// @brief Bool トークンを読み取り、variant を返す。
-    /// @param parser 読み取り元の JsonParser
+    /// @param parser 読み取り元の Parser
     /// @return 読み取った値
-    Variant readBool(JsonParser& parser) const {
+    Variant readBool(Parser& parser) const {
         if constexpr (canAssign<bool>()) {
             bool value{};
             parser.readTo(value);
@@ -573,9 +573,9 @@ struct VariantElementConverter : TokenConverter<Variant> {
     }
 
     /// @brief Integer トークンを読み取り、variant を返す。
-    /// @param parser 読み取り元の JsonParser
+    /// @param parser 読み取り元の Parser
     /// @return 読み取った値
-    Variant readInteger(JsonParser& parser) const {
+    Variant readInteger(Parser& parser) const {
         if constexpr (canAssign<int>()) {
             int value{};
             parser.readTo(value);
@@ -585,9 +585,9 @@ struct VariantElementConverter : TokenConverter<Variant> {
     }
 
     /// @brief Number トークンを読み取り、variant を返す。
-    /// @param parser 読み取り元の JsonParser
+    /// @param parser 読み取り元の Parser
     /// @return 読み取った値
-    Variant readNumber(JsonParser& parser) const {
+    Variant readNumber(Parser& parser) const {
         if constexpr (canAssign<double>()) {
             double value{};
             parser.readTo(value);
@@ -597,9 +597,9 @@ struct VariantElementConverter : TokenConverter<Variant> {
     }
 
     /// @brief String トークンを読み取り、variant を返す。
-    /// @param parser 読み取り元の JsonParser
+    /// @param parser 読み取り元の Parser
     /// @return 読み取った値
-    Variant readString(JsonParser& parser) const {
+    Variant readString(Parser& parser) const {
         if constexpr (canAssign<std::string>()) {
             std::string value{};
             parser.readTo(value);
@@ -609,17 +609,17 @@ struct VariantElementConverter : TokenConverter<Variant> {
     }
 
     /// @brief StartArray トークンを読み取り、variant を返す。
-    /// @param parser 読み取り元の JsonParser
+    /// @param parser 読み取り元の Parser
     /// @return 読み取った値
-    Variant readStartArray(JsonParser& parser) const {
+    Variant readStartArray(Parser& parser) const {
         (void)parser;
         throw std::runtime_error("Array is not supported in variant");
     }
 
     /// @brief StartObject トークンを読み取り、variant を返す。
-    /// @param parser 読み取り元の JsonParser
+    /// @param parser 読み取り元の Parser
     /// @return 読み取った値
-    Variant readStartObject(JsonParser& parser) const {
+    Variant readStartObject(Parser& parser) const {
         bool found = false;
         Variant out{};
         [&]<std::size_t... I>(std::index_sequence<I...>) {

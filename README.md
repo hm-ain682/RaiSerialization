@@ -237,11 +237,11 @@ struct Drawing {
 ```
 
 ## Custom read/write methods (writeJson / readJson) ✍️
-If you prefer full control, implement `void writeJson(JsonWriter&) const` and `void readJson(JsonParser&)` on your type. These methods are also used automatically when such types are encountered inside `FieldSerializer`-driven structures.
+If you prefer full control, implement `void writeJson(JsonWriter&) const` and `void readJson(Parser&)` on your type. These methods are also used automatically when such types are encountered inside `FieldSerializer`-driven structures.
 
 ```cpp
 import rai.serialization.json_writer;
-import rai.serialization.json_parser;
+import rai.serialization.parser;
 import rai.serialization.json_io;
 
 struct CustomData {
@@ -255,7 +255,7 @@ struct CustomData {
         writer.endObject();
     }
 
-    void readJson(rai::serialization::JsonParser& parser) {
+    void readJson(rai::serialization::Parser& parser) {
         parser.startObject();
         while (!parser.nextIsEndObject()) {
             auto key = parser.nextKey();
@@ -277,7 +277,7 @@ struct CustomData {
 - `src/Common/ThreadPool.cppm`: Lightweight task queue used by parallel I/O helpers.
 - `src/Serialization/Json/JsonTokenizer.cppm`: JSON5 tokenizer with comment and whitespace handling.
 - `src/Serialization/TokenManager.cppm`: Token queue abstraction for thread-safe parsing.
-- `src/Serialization/Json/JsonParser.cppm`: Token-based parser with strong type checks and unknown-key tracking.
+- `src/Serialization/Parser.cppm`: Token-based parser with strong type checks and unknown-key tracking.
 - `src/Serialization/Json/JsonWriter.cppm`: JSON5 writer with identifier-aware key emission and escaping.
 - `src/Serialization/ObjectConverter.cppm`: Converters for primitives, enums, containers, pointers, and custom types.
 - `src/Serialization/PolymorphicConverter.cppm`: Polymorphic converters with type tags.

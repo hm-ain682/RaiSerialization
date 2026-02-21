@@ -23,7 +23,7 @@ module;
 
 import rai.collection.sorted_hash_array_map;
 import rai.serialization.json_writer;
-import rai.serialization.json_parser;
+import rai.serialization.parser;
 import rai.serialization.token_manager;
 export module rai.serialization.object_serializer;
 
@@ -44,10 +44,10 @@ public:
     virtual void writeFields(JsonWriter& writer, const void* obj) const = 0;
 
     /// @brief オブジェクトのフィールドを読み込む。
-    /// @param parser 読み取り元の JsonParser
+    /// @param parser 読み取り元の Parser
     /// @param obj 対象オブジェクトの void* ポインタ
     /// @note startObject/endObject は呼び出し側で処理してください。
-    virtual void readFields(JsonParser& parser, void* obj) const = 0;
+    virtual void readFields(Parser& parser, void* obj) const = 0;
 };
 
 // ******************************************************************************** フィールド集合による永続化
@@ -55,7 +55,7 @@ public:
 /// @brief FieldSerializer互換のインターフェースを満たすか判定するconcept。
 /// @tparam Field 判定対象のフィールド型
 export template <typename Field>
-concept IsReadWriteField = requires(const Field& field, JsonParser& parser, JsonWriter& writer,
+concept IsReadWriteField = requires(const Field& field, Parser& parser, JsonWriter& writer,
     typename Field::Owner& owner, const typename Field::Owner& constOwner) {
     { field.read(parser, owner) } -> std::same_as<void>;
     { field.write(writer, constOwner) } -> std::same_as<void>;
@@ -113,7 +113,7 @@ public:
     /// @param parser 読み取り元のJsonParser互換オブジェクト。
     /// @param obj 対象オブジェクト。
     /// @note FieldsObjectSerializer内でフィールド探索と読み込みを行う。
-    void readFields(JsonParser& parser, void* obj) const override {
+    void readFields(Parser& parser, void* obj) const override {
         auto& owner = *static_cast<Owner*>(obj);
         std::bitset<N_> seen{};
         while (!parser.nextIsEndObject()) {
@@ -126,7 +126,7 @@ public:
             }
             const std::size_t fieldIndex = *foundIndex;
             if (seen[fieldIndex]) {
-                throw std::runtime_error(std::string("JsonParser: duplicate key '") + k + "'");
+                throw std::runtime_error(std::string("Parser: duplicate key '") + k + "'");
             }
             seen[fieldIndex] = true;
 

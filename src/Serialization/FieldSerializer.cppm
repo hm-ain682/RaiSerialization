@@ -29,7 +29,7 @@ export module rai.serialization.field_serializer;
 
 import rai.serialization.object_converter;
 import rai.serialization.json_writer;
-import rai.serialization.json_parser;
+import rai.serialization.parser;
 import rai.serialization.token_manager;
 
 import rai.collection.sorted_hash_array_map;
@@ -130,7 +130,7 @@ struct RequiredFieldOmitBehavior {
     void applyMissing(Value& outValue, std::string_view key) const {
         (void)outValue;
         throw std::runtime_error(
-            std::string("JsonParser: missing required key '") +
+            std::string("Parser: missing required key '") +
             std::string(key) + "'");
     }
 };
@@ -171,9 +171,9 @@ struct FieldSerializer {
           omittedBehavior_(std::move(behavior)) {}
 
     /// @brief JSON から値を読み取り、所有者のメンバに設定する。
-    /// @param parser 読み取り元の JsonParser
+    /// @param parser 読み取り元の Parser
     /// @param owner 代入先の所有者
-    void read(JsonParser& parser, Owner& owner) const {
+    void read(Parser& parser, Owner& owner) const {
         owner.*member = converter_.get().read(parser);
     }
 

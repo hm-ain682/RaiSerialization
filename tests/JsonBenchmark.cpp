@@ -4,7 +4,7 @@
 import rai.serialization.field_serializer;
 import rai.serialization.object_converter;
 import rai.serialization.json_writer;
-import rai.serialization.json_parser;
+import rai.serialization.parser;
 import rai.serialization.json_tokenizer;
 import rai.serialization.token_manager;
 import rai.serialization.object_serializer;
@@ -387,7 +387,7 @@ static void runSequentialPipeline(
     parseTime = timer.elapsedMicroseconds();
 
     timer.start();
-    JsonParser parser(tokenManager);
+    Parser parser(tokenManager);
     readJsonObject(parser, out);
     buildTime = timer.elapsedMicroseconds();
 }
@@ -436,7 +436,7 @@ static void runInMemoryBenchmark(const std::string& jsonData,
 
         // (3) オブジェクト構築時間
         timer.start();
-        JsonParser parser(tokenManager);
+        Parser parser(tokenManager);
         readJsonObject(parser, data);
         double buildTime = timer.elapsedMicroseconds();
         buildTimes.push_back(buildTime);
