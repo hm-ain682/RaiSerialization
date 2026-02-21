@@ -20,7 +20,7 @@ export namespace rai::serialization::test {
 ///       3. そのJSONを読み込んでオブジェクトを構築
 ///       4. 元のオブジェクトと内容が一致していることを確認
 template <typename T>
-    requires (HasSerializer<T> || HasReadJson<T>) &&
+    requires (HasSerializer<T> || HasReadFormat<T>) &&
              requires(const T& a, const T& b) { { a.equals(b) } -> std::convertible_to<bool>; }
 void testJsonRoundTrip(const T& original, const std::string& expectedJson) {
     // JSON形式で書き出す

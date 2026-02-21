@@ -22,8 +22,7 @@ module;
 #include <typeinfo>
 
 import rai.collection.sorted_hash_array_map;
-import rai.serialization.json_writer;
-import rai.serialization.parser;
+import rai.serialization.format_io;
 import rai.serialization.token_manager;
 export module rai.serialization.object_serializer;
 
@@ -38,16 +37,16 @@ public:
     virtual ~ObjectSerializer() = default;
 
     /// @brief オブジェクトのフィールドのみを書き出す（startObject/endObjectなし）。
-    /// @param writer 書き込み先のJsonWriter。
+    /// @param writer 書き込み先のFormatWriter。
     /// @param obj 対象オブジェクトのvoidポインタ。
     /// @note ポリモーフィック型の書き出し時に使用する。
-    virtual void writeFields(JsonWriter& writer, const void* obj) const = 0;
+    virtual void writeFields(FormatWriter& writer, const void* obj) const = 0;
 
     /// @brief オブジェクトのフィールドを読み込む。
-    /// @param parser 読み取り元の Parser
+    /// @param parser 読み取り元の FormatReader
     /// @param obj 対象オブジェクトの void* ポインタ
     /// @note startObject/endObject は呼び出し側で処理してください。
-    virtual void readFields(Parser& parser, void* obj) const = 0;
+    virtual void readFields(FormatReader& parser, void* obj) const = 0;
 };
 
 // ******************************************************************************** フィールド集合による永続化
@@ -55,7 +54,7 @@ public:
 /// @brief FieldSerializer互換のインターフェースを満たすか判定するconcept。
 /// @tparam Field 判定対象のフィールド型
 export template <typename Field>
-concept IsReadWriteField = requires(const Field& field, Parser& parser, JsonWriter& writer,
+concept IsReadWriteField = requires(const Field& field, FormatReader& parser, FormatWriter& writer,
     typename Field::Owner& owner, const typename Field::Owner& constOwner) {
     { field.read(parser, owner) } -> std::same_as<void>;
     { field.write(writer, constOwner) } -> std::same_as<void>;
@@ -98,10 +97,10 @@ public:
     }
 
     /// @brief オブジェクトのフィールドのみを書き出す（startObject/endObjectなし）。
-    /// @param writer 書き込み先のJsonWriter。
+    /// @param writer 書き込み先のFormatWriter。
     /// @param obj 対象オブジェクトのvoidポインタ。
     /// @note ポリモーフィック型の書き出し時に使用する。
-    void writeFields(JsonWriter& writer, const void* obj) const override {
+    void writeFields(FormatWriter& writer, const void* obj) const override {
         const Owner* owner = static_cast<const Owner*>(obj);
         forEachField([&](std::size_t, const auto& field) {
             // デフォルトの toJson に委譲（明示的な分岐不要）
@@ -110,10 +109,10 @@ public:
     }
 
     /// @brief オブジェクトのフィールドをJSONから読み込む（startObject/endObjectなし）。
-    /// @param parser 読み取り元のJsonParser互換オブジェクト。
+    /// @param parser 読み取り元のFormatReader互換オブジェクト。
     /// @param obj 対象オブジェクト。
     /// @note FieldsObjectSerializer内でフィールド探索と読み込みを行う。
-    void readFields(Parser& parser, void* obj) const override {
+    void readFields(FormatReader& parser, void* obj) const override {
         auto& owner = *static_cast<Owner*>(obj);
         std::bitset<N_> seen{};
         while (!parser.nextIsEndObject()) {

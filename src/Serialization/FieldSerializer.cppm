@@ -28,8 +28,7 @@ module;
 export module rai.serialization.field_serializer;
 
 import rai.serialization.object_converter;
-import rai.serialization.json_writer;
-import rai.serialization.parser;
+import rai.serialization.format_io;
 import rai.serialization.token_manager;
 
 import rai.collection.sorted_hash_array_map;
@@ -171,16 +170,16 @@ struct FieldSerializer {
           omittedBehavior_(std::move(behavior)) {}
 
     /// @brief JSON から値を読み取り、所有者のメンバに設定する。
-    /// @param parser 読み取り元の Parser
+    /// @param parser 読み取り元の FormatReader
     /// @param owner 代入先の所有者
-    void read(Parser& parser, Owner& owner) const {
+    void read(FormatReader& parser, Owner& owner) const {
         owner.*member = converter_.get().read(parser);
     }
 
     /// @brief JSON項目（キーと値）を書き出す。
-    /// @param writer 書き込み先の JsonWriter
+    /// @param writer 書き込み先の FormatWriter
     /// @param owner 書き出し元の所有者
-    void write(JsonWriter& writer, const Owner& owner) const {
+    void write(FormatWriter& writer, const Owner& owner) const {
         const auto& value = owner.*member;
         if (omittedBehavior_.shouldSkipWrite(value)) {
             return;
@@ -225,7 +224,7 @@ constexpr auto getField(MemberPtr memberPtr, const char* keyName,
 
 /// @brief 項目必須のFieldSerializerを作って返す。
 ///        与えられた MemberPtr の値型（以下）に対するコンバータを使用する。
-///        基本型、HasSerializer、HasReadJson/HasWriteJson
+///        基本型、HasSerializer、HasReadFormat/HasWriteFormat
 /// @param memberPtr メンバポインタ
 /// @param keyName JSONキー名
 export template <typename MemberPtr>
@@ -249,7 +248,7 @@ constexpr auto getRequiredField(MemberPtr memberPtr, const char* keyName,
 
 /// @brief 読み込み時省略では既定値を代入し、書き込み時は既定値と等しい場合に省略するFieldSerializerを返す。
 ///        与えられた MemberPtr の値型（以下）に対するコンバータを使用する。
-///        基本型、HasSerializer、HasReadJson/HasWriteJson
+///        基本型、HasSerializer、HasReadFormat/HasWriteFormat
 /// @param memberPtr メンバポインタ
 /// @param keyName JSONキー名
 /// @param defaultValue 欠落時に代入し、書き込み時の省略判定に使う値
@@ -277,7 +276,7 @@ constexpr auto getDefaultOmittedField(MemberPtr memberPtr, const char* keyName,
 
 /// @brief 読み込み時省略では何も行わず、書き込み時も省略しないFieldSerializerを返す。
 ///        与えられた MemberPtr の値型（以下）に対するコンバータを使用する。
-///        基本型、HasSerializer、HasReadJson/HasWriteJson
+///        基本型、HasSerializer、HasReadFormat/HasWriteFormat
 /// @param memberPtr メンバポインタ
 /// @param keyName JSONキー名
 export template <typename MemberPtr>

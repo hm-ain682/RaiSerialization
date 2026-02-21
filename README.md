@@ -236,26 +236,27 @@ struct Drawing {
 > Note: Polymorphic converters accept an optional `allowNull` flag (default: `true`).
 ```
 
-## Custom read/write methods (writeJson / readJson) ✍️
-If you prefer full control, implement `void writeJson(JsonWriter&) const` and `void readJson(Parser&)` on your type. These methods are also used automatically when such types are encountered inside `FieldSerializer`-driven structures.
+## Custom read/write methods (writeFormat / readFormat) ✍️
+If you prefer full control, implement `void writeFormat(FormatWriter&) const` and
+`void readFormat(FormatReader&)` on your type. These methods are also used automatically
+when such types are encountered inside `FieldSerializer`-driven structures.
 
 ```cpp
-import rai.serialization.json_writer;
-import rai.serialization.parser;
+import rai.serialization.format_io;
 import rai.serialization.json_io;
 
 struct CustomData {
     int value = 0;
     std::string name;
 
-    void writeJson(rai::serialization::JsonWriter& writer) const {
+    void writeFormat(rai::serialization::FormatWriter& writer) const {
         writer.startObject();
         writer.key("value"); writer.writeObject(value);
         writer.key("name");  writer.writeObject(name);
         writer.endObject();
     }
 
-    void readJson(rai::serialization::Parser& parser) {
+    void readFormat(rai::serialization::FormatReader& parser) {
         parser.startObject();
         while (!parser.nextIsEndObject()) {
             auto key = parser.nextKey();
@@ -277,6 +278,7 @@ struct CustomData {
 - `src/Common/ThreadPool.cppm`: Lightweight task queue used by parallel I/O helpers.
 - `src/Serialization/Json/JsonTokenizer.cppm`: JSON5 tokenizer with comment and whitespace handling.
 - `src/Serialization/TokenManager.cppm`: Token queue abstraction for thread-safe parsing.
+- `src/Serialization/FormatIO.cppm`: Default format aliases (`FormatReader`/`FormatWriter`) used by serializer internals.
 - `src/Serialization/Parser.cppm`: Token-based parser with strong type checks and unknown-key tracking.
 - `src/Serialization/Json/JsonWriter.cppm`: JSON5 writer with identifier-aware key emission and escaping.
 - `src/Serialization/ObjectConverter.cppm`: Converters for primitives, enums, containers, pointers, and custom types.

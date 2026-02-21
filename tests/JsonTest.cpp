@@ -1,6 +1,7 @@
 import rai.serialization.field_serializer;
 import rai.serialization.object_converter;
 import rai.serialization.polymorphic_converter;
+import rai.serialization.format_io;
 import rai.serialization.json_writer;
 import rai.serialization.parser;
 import rai.serialization.object_serializer;
@@ -658,17 +659,17 @@ TEST(JsonTokenDispatchTest, ReadWriteFalse) {
 }
 
 // ********************************************************************************
-// HasReadJson/HasWriteJson テスト
+// HasReadFormat/HasWriteFormat テスト
 // ********************************************************************************
 
-/// @brief readJson/writeJsonメソッドを持つテスト用構造体。
-struct CustomJsonType {
+/// @brief readFormat/writeFormatメソッドを持つテスト用構造体。
+struct CustomFormatType {
     int value = 0;
     std::string name;
 
-    /// @brief JSONへの書き出し。
-    /// @param writer JsonWriterの参照。
-    void writeJson(JsonWriter& writer) const {
+    /// @brief 既定フォーマットへの書き出し。
+    /// @param writer FormatWriterの参照。
+    void writeFormat(FormatWriter& writer) const {
         writer.startObject();
         writer.key("value");
         writer.writeObject(value);
@@ -677,9 +678,9 @@ struct CustomJsonType {
         writer.endObject();
     }
 
-    /// @brief JSONからの読み込み。
-    /// @param parser Parserの参照。
-    void readJson(Parser& parser) {
+    /// @brief 既定フォーマットからの読み込み。
+    /// @param parser FormatReaderの参照。
+    void readFormat(FormatReader& parser) {
         parser.startObject();
         while (!parser.nextIsEndObject()) {
             auto key = parser.nextKey();
@@ -697,39 +698,39 @@ struct CustomJsonType {
     /// @brief 同値判定。
     /// @param other 比較対象。
     /// @return 同値ならtrue。
-    bool equals(const CustomJsonType& other) const {
+    bool equals(const CustomFormatType& other) const {
         return value == other.value && name == other.name;
     }
 };
 
-/// @brief HasWriteJson版getJsonContentのテスト。
-TEST(HasReadWriteJsonTest, GetJsonContent) {
-    CustomJsonType obj;
+/// @brief HasWriteFormat版getJsonContentのテスト。
+TEST(HasReadWriteFormatTest, GetJsonContent) {
+    CustomFormatType obj;
     obj.value = 42;
     obj.name = "test";
     auto json = getJsonContent(obj);
     EXPECT_EQ(json, "{value:42,name:\"test\"}");
 }
 
-/// @brief HasReadJson版readJsonStringのテスト。
-TEST(HasReadWriteJsonTest, ReadJsonString) {
-    CustomJsonType obj;
+/// @brief HasReadFormat版readJsonStringのテスト。
+TEST(HasReadWriteFormatTest, ReadJsonString) {
+    CustomFormatType obj;
     readJsonString("{value:123,name:\"hello\"}", obj);
     EXPECT_EQ(obj.value, 123);
     EXPECT_EQ(obj.name, "hello");
 }
 
-/// @brief HasReadJson版readJsonFileのテスト。
-TEST(HasReadWriteJsonTest, ReadJsonFile) {
+/// @brief HasReadFormat版readJsonFileのテスト。
+TEST(HasReadWriteFormatTest, ReadJsonFile) {
     // 一時ファイルにJSONを書き込む
-    std::string filename = "test_custom_json.json";
+    std::string filename = "test_custom_format.json";
     {
         std::ofstream ofs(filename);
         ofs << "{value:999,name:\"from_file\"}";
     }
 
     // ファイルから読み込む
-    CustomJsonType obj;
+    CustomFormatType obj;
     readJsonFile(filename, obj);
 
     EXPECT_EQ(obj.value, 999);
@@ -739,9 +740,9 @@ TEST(HasReadWriteJsonTest, ReadJsonFile) {
     std::remove(filename.c_str());
 }
 
-/// @brief HasReadJson版readJsonFileのラウンドトリップテスト。
-TEST(HasReadWriteJsonTest, RoundTrip) {
-    CustomJsonType original;
+/// @brief HasReadFormat版readJsonFileのラウンドトリップテスト。
+TEST(HasReadWriteFormatTest, RoundTrip) {
+    CustomFormatType original;
     original.value = 42;
     original.name = "test";
     testJsonRoundTrip(original, "{value:42,name:\"test\"}");

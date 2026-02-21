@@ -18,6 +18,7 @@ module;
 
 export module rai.serialization.object_converter;
 
+import rai.serialization.format_io;
 import rai.serialization.json_writer;
 import rai.serialization.parser;
 import rai.serialization.token_manager;
@@ -28,19 +29,33 @@ export namespace rai::serialization {
 
 // ******************************************************************************** concept
 
-/// @brief JSONへの書き出しと読み込みを行うコンバータに要求される条件を定義する concept。
+/// @brief フォーマットへの書き出しと読み込みを行うコンバータに要求される条件を定義する concept。
 /// @tparam Converter コンバータ型
 /// @tparam Value コンバータが扱う値の型
 template <typename Converter, typename Value>
 concept IsObjectConverter = std::is_class_v<Converter>
     && requires { typename Converter::Value; }
     && std::is_same_v<typename Converter::Value, Value>
-    && requires(const Converter& converter, JsonWriter& writer, const Value& value) {
+    && requires(const Converter& converter, FormatWriter& writer, const Value& value) {
         converter.write(writer, value);
     }
-    && requires(const Converter& converter, Parser& parser) {
+    && requires(const Converter& converter, FormatReader& parser) {
         { converter.read(parser) } -> std::same_as<Value>;
     };
+
+/// @brief readFormatメソッドを持つ型を表すconcept。
+/// @tparam T 型。
+template <typename T>
+concept HasReadFormatCore = requires(T& obj, FormatReader& parser) {
+    { obj.readFormat(parser) } -> std::same_as<void>;
+};
+
+/// @brief writeFormatメソッドを持つ型を表すconcept。
+/// @tparam T 型。
+template <typename T>
+concept HasWriteFormatCore = requires(const T& obj, FormatWriter& writer) {
+    { obj.writeFormat(writer) } -> std::same_as<void>;
+};
 
 // ******************************************************************************** 基本型用変換方法
 
@@ -74,13 +89,13 @@ struct JsonFieldsConverter {
     static_assert(HasSerializer<T> && std::default_initializable<T>,
         "JsonFieldsConverter requires T to have serializer() and be default-initializable");
     using Value = T;
-    void write(JsonWriter& writer, const T& obj) const {
+    void write(FormatWriter& writer, const T& obj) const {
         auto& fields = obj.serializer();
         writer.startObject();
         fields.writeFields(writer, static_cast<const void*>(&obj));
         writer.endObject();
     }
-    T read(Parser& parser) const {
+    T read(FormatReader& parser) const {
         T obj{};
         auto& fields = obj.serializer();
         parser.startObject();
@@ -90,32 +105,28 @@ struct JsonFieldsConverter {
     }
 };
 
-/// @brief readJsonメソッドを持つ型を表すconcept。
+/// @brief readFormatメソッドを持つ型を表すconcept。
 /// @tparam T 型。
 template <typename T>
-concept HasReadJson = requires(T& obj, Parser& parser) {
-    { obj.readJson(parser) } -> std::same_as<void>;
-};
+concept HasReadFormat = HasReadFormatCore<T>;
 
-/// @brief writeJsonメソッドを持つ型を表すconcept。
+/// @brief writeFormatメソッドを持つ型を表すconcept。
 /// @tparam T 型。
 template <typename T>
-concept HasWriteJson = requires(const T& obj, JsonWriter& writer) {
-    { obj.writeJson(writer) } -> std::same_as<void>;
-};
+concept HasWriteFormat = HasWriteFormatCore<T>;
 
-/// @brief writeJson/readJson を持つ型のコンバータ
+/// @brief writeFormat/readFormatを持つ型のコンバータ
 template <typename T>
-struct ReadWriteJsonConverter {
-    static_assert(HasReadJson<T> && HasWriteJson<T> && std::default_initializable<T>,
-        "ReadWriteJsonConverter requires T to have readJson/writeJson and be default-initializable");
+struct ReadWriteFormatConverter {
+    static_assert(HasReadFormat<T> && HasWriteFormat<T> && std::default_initializable<T>,
+        "ReadWriteFormatConverter requires T to have readFormat/writeFormat and be default-initializable");
     using Value = T;
-    void write(JsonWriter& writer, const T& obj) const {
-        obj.writeJson(writer);
+    void write(FormatWriter& writer, const T& obj) const {
+        obj.writeFormat(writer);
     }
-    T read(Parser& parser) const {
+    T read(FormatReader& parser) const {
         T out{};
-        out.readJson(parser);
+        out.readFormat(parser);
         return out;
     }
 };
@@ -127,10 +138,10 @@ concept IsDefaultConverterSupported
     = IsFundamentalValue<T>
     || std::same_as<T, std::string>
     || HasSerializer<T>
-    || (HasReadJson<T> && HasWriteJson<T>);
+    || (HasReadFormat<T> && HasWriteFormat<T>);
 
 /// @brief 型 `T` に応じた既定のコンバータを返すユーティリティ。
-/// @note 基本型、`HasSerializer`、`HasReadJson`/`HasWriteJson` を持つ型を自動的に扱い、その他の複雑な型は明確な static_assert で除外します。
+/// @note 基本型、`HasSerializer`、`HasReadFormat`/`HasWriteFormat` を持つ型を自動的に扱い、その他の複雑な型は明確な static_assert で除外します。
 template <typename T>
 constexpr auto& getConverter() {
     if constexpr (IsFundamentalValue<T> || std::same_as<T, std::string>) {
@@ -141,8 +152,8 @@ constexpr auto& getConverter() {
         static const JsonFieldsConverter<T> inst{};
         return inst;
     }
-    else if constexpr (HasReadJson<T> && HasWriteJson<T>) {
-        static const ReadWriteJsonConverter<T> inst{};
+    else if constexpr (HasReadFormat<T> && HasWriteFormat<T>) {
+        static const ReadWriteFormatConverter<T> inst{};
         return inst;
     }
     else {
@@ -463,7 +474,7 @@ struct TokenConverter {
     }
 
     Value readStartObject(Parser& parser) const {
-        if constexpr (HasSerializer<Value> || (HasReadJson<Value> && HasWriteJson<Value>)) {
+        if constexpr (HasSerializer<Value> || (HasReadFormat<Value> && HasWriteFormat<Value>)) {
             return getConverter<Value>().read(parser);
         }
         else {
@@ -626,7 +637,7 @@ struct VariantElementConverter : TokenConverter<Variant> {
             // Evaluate alternatives in order; stop at the first that matches
             ((void)(!found && ([&]() {
                 using Alt = std::remove_cvref_t<typename std::variant_alternative_t<I, Variant>>;
-                if constexpr (HasSerializer<Alt> || (HasReadJson<Alt> && HasWriteJson<Alt>)) {
+                if constexpr (HasSerializer<Alt> || (HasReadFormat<Alt> && HasWriteFormat<Alt>)) {
                     out = getConverter<Alt>().read(parser);
                     found = true;
                 }

@@ -16,6 +16,7 @@ export module rai.serialization.json_io;
 
 import rai.serialization.object_converter;
 import rai.serialization.object_serializer;
+import rai.serialization.format_io;
 import rai.serialization.json_writer;
 import rai.serialization.parser;
 import rai.serialization.json_tokenizer;
@@ -327,25 +328,25 @@ void readJsonFile(const std::string& filename, T& out) {
     readJsonFile(filename, out, unknownKeysOut);
 }
 
-// writeJson/readJsonメソッドを持つ型専用のオーバーロード
+// writeFormat/readFormatメソッドを持つ型専用のオーバーロード
 
-/// @brief writeJsonメソッドを持つ型をJSON形式で文字列化して返す。
-/// @tparam T writeJsonメソッドを持つ型。
+/// @brief writeFormatメソッドを持つ型をJSON形式で文字列化して返す。
+/// @tparam T writeFormatメソッドを持つ型。
 /// @param obj 変換するオブジェクト。
 /// @return JSON形式の文字列。
-export template <HasWriteJson T>
+export template <HasWriteFormat T>
 std::string getJsonContent(const T& obj) {
     std::ostringstream oss;
     JsonWriter writer(oss);
-    obj.writeJson(writer);
+    obj.writeFormat(writer);
     return oss.str();
 }
 
-/// @brief readJsonメソッドを持つ型をJSON文字列から読み込む。
-/// @tparam T readJsonメソッドを持つ型。
+/// @brief readFormatメソッドを持つ型をJSON文字列から読み込む。
+/// @tparam T readFormatメソッドを持つ型。
 /// @param jsonText JSON形式の文字列。
 /// @param out 読み込み先のオブジェクト。
-export template <HasReadJson T>
+export template <HasReadFormat T>
 void readJsonString(const std::string& jsonText, T& out) {
     std::string buffer = jsonText;
     buffer.reserve(buffer.size() + aheadSize);
@@ -358,14 +359,14 @@ void readJsonString(const std::string& jsonText, T& out) {
     tokenizer.tokenize();
 
     Parser parser(tokenManager);
-    out.readJson(parser);
+    out.readFormat(parser);
 }
 
-/// @brief readJsonメソッドを持つ型をJSONファイルから読み込む。
-/// @tparam T readJsonメソッドを持つ型。
+/// @brief readFormatメソッドを持つ型をJSONファイルから読み込む。
+/// @tparam T readFormatメソッドを持つ型。
 /// @param filename 入力元のファイル名。
 /// @param out 読み込み先のオブジェクト。
-export template <HasReadJson T>
+export template <HasReadFormat T>
 void readJsonFile(const std::string& filename, T& out) {
     std::ifstream ifs(filename, std::ios::binary);
     if (!ifs.is_open()) {
@@ -397,7 +398,7 @@ void readJsonFile(const std::string& filename, T& out) {
     tokenizer.tokenize();
 
     Parser parser(tokenManager);
-    out.readJson(parser);
+    out.readFormat(parser);
 }
 
 }  // namespace rai::serialization

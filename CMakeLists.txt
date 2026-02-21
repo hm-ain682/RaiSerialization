@@ -27,6 +27,7 @@ target_sources(RaiSerialization
             src/Serialization/ReadingAheadDoubleBuffer.cppm
             src/Serialization/ParallelInputStreamSource.cppm
             src/Serialization/TokenManager.cppm
+            src/Serialization/FormatIO.cppm
             src/Serialization/ObjectConverter.cppm
             src/Serialization/FieldSerializer.cppm
             src/Serialization/PolymorphicConverter.cppm
