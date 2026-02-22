@@ -6,7 +6,7 @@ module;
 export module rai.serialization.format_io;
 
 import rai.serialization.json_writer;
-import rai.serialization.parser;
+import rai.serialization.json_parser;
 import rai.serialization.token_manager;
 
 export namespace rai::serialization {
@@ -15,7 +15,7 @@ export namespace rai::serialization {
 using FormatWriter = JsonWriter;
 
 /// @brief 既定フォーマットの読み込み型。
-using FormatReader = Parser;
+using FormatReader = JsonParser;
 
 /// @brief 既定フォーマットのトークン種別。
 using FormatTokenType = JsonTokenType;

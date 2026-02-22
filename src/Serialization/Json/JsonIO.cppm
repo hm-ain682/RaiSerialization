@@ -18,7 +18,7 @@ import rai.serialization.object_converter;
 import rai.serialization.object_serializer;
 import rai.serialization.format_io;
 import rai.serialization.json_writer;
-import rai.serialization.parser;
+import rai.serialization.json_parser;
 import rai.serialization.json_tokenizer;
 import rai.serialization.token_manager;
 import rai.serialization.reading_ahead_buffer;
@@ -75,11 +75,11 @@ void writeJsonFile(const T& obj, const std::string& filename) {
 
 /// @brief オブジェクトをJSONから読み込む（startObject/endObject含む）。
 /// @tparam T HasSerializerを実装している型。
-/// @param parser 読み取り元のParser互換オブジェクト。
+/// @param parser 読み取り元のJsonParser互換オブジェクト。
 /// @param obj 読み込み先のオブジェクト。
 /// @note トップレベルのJSON読み込み用のヘルパー関数。
 export template <HasSerializer T>
-void readJsonObject(Parser& parser, T& obj) {
+void readJsonObject(JsonParser& parser, T& obj) {
     auto& fields = obj.serializer();
     // Delegate full object parsing (including defaults and required checks)
     parser.startObject();
@@ -102,7 +102,7 @@ void readJsonFromBuffer(std::string&& buffer, T& out,
         inputSource, tokenManager, warningOutput);
     tokenizer.tokenize();
 
-    Parser parser(tokenManager);
+    JsonParser parser(tokenManager);
     readJsonObject(parser, out);
     unknownKeysOut = std::move(parser.getUnknownKeys());
 }
@@ -243,7 +243,7 @@ void readJsonFileParallelImpl(std::ifstream& ifs, const std::string& filename, T
         }
     });
 
-    Parser parser(tokenManager);
+    JsonParser parser(tokenManager);
 
     try {
         readJsonObject(parser, out);
@@ -358,7 +358,7 @@ void readJsonString(const std::string& jsonText, T& out) {
         inputSource, tokenManager, warningOutput);
     tokenizer.tokenize();
 
-    Parser parser(tokenManager);
+    JsonParser parser(tokenManager);
     out.readFormat(parser);
 }
 
@@ -397,7 +397,7 @@ void readJsonFile(const std::string& filename, T& out) {
         inputSource, tokenManager, warningOutput);
     tokenizer.tokenize();
 
-    Parser parser(tokenManager);
+    JsonParser parser(tokenManager);
     out.readFormat(parser);
 }
 

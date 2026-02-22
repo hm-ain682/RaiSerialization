@@ -24,7 +24,7 @@ module;
 export module rai.serialization.polymorphic_converter;
 
 import rai.serialization.json_writer;
-import rai.serialization.parser;
+import rai.serialization.json_parser;
 import rai.serialization.token_manager;
 import rai.serialization.object_converter;
 
@@ -73,14 +73,14 @@ using PolymorphicTypeFactory = std::function<Ptr()>;
 
 /// @brief ポリモーフィックオブジェクト1つ分を読み取るヘルパー関数。
 /// @tparam Ptr ポインタ型（unique_ptr/shared_ptr/生ポインタ）。
-/// @param parser Parserの参照。
+/// @param parser JsonParserの参照。
 /// @param entriesMap 型名からファクトリ関数へのマッピング。
 /// @param jsonKey 型判別用のJSONキー名。
 /// @return 読み取ったオブジェクトのポインタ。または型キーが見つからない／未知の型名の場合はnullptr。
 export template <typename Ptr>
     requires IsSmartOrRawPointer<Ptr>
 Ptr readPolymorphicInstance(
-    Parser& parser,
+    JsonParser& parser,
     const collection::MapReference<std::string_view, PolymorphicTypeFactory<Ptr>>& entriesMap,
     std::string_view jsonKey = "type") {
 
@@ -129,7 +129,7 @@ Ptr readPolymorphicInstance(
 export template <typename Ptr>
     requires IsSmartOrRawPointer<Ptr>
 Ptr readPolymorphicInstanceOrNull(
-    Parser& parser,
+    JsonParser& parser,
     const collection::MapReference<std::string_view, PolymorphicTypeFactory<Ptr>>& entriesMap,
     std::string_view jsonKey = "type") {
     // null値の場合はnullptrを返す
@@ -174,7 +174,7 @@ struct PolymorphicConverter {
         const Entries& entries, const char* jsonKey = "type", bool allowNull = true)
         : entries_(entries), jsonKey_(jsonKey), allowNull_(allowNull) {}
 
-    Ptr read(Parser& parser) const {
+    Ptr read(JsonParser& parser) const {
         if (allowNull_) {
             return readPolymorphicInstanceOrNull<Ptr>(parser, entries_, jsonKey_);
         }

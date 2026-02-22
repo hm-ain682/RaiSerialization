@@ -129,7 +129,7 @@ struct RequiredFieldOmitBehavior {
     void applyMissing(Value& outValue, std::string_view key) const {
         (void)outValue;
         throw std::runtime_error(
-            std::string("Parser: missing required key '") +
+            std::string("JsonParser: missing required key '") +
             std::string(key) + "'");
     }
 };

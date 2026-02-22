@@ -3,7 +3,7 @@ import rai.serialization.object_converter;
 import rai.serialization.polymorphic_converter;
 import rai.serialization.format_io;
 import rai.serialization.json_writer;
-import rai.serialization.parser;
+import rai.serialization.json_parser;
 import rai.serialization.object_serializer;
 import rai.serialization.json_io;
 import rai.serialization.test_helper;
@@ -582,7 +582,7 @@ struct TokenDispatchHolder {
         struct FromConv : TokenConverter<DispatchValue>
         {
             /// @brief Bool トークンを読み取る。
-            DispatchValue readBool(Parser& p) const
+            DispatchValue readBool(JsonParser& p) const
             {
                 bool b;
                 p.readTo(b);
@@ -590,7 +590,7 @@ struct TokenDispatchHolder {
             }
 
             /// @brief Integer トークンを読み取る。
-            DispatchValue readInteger(Parser& p) const
+            DispatchValue readInteger(JsonParser& p) const
             {
                 int64_t i;
                 p.readTo(i);
@@ -598,7 +598,7 @@ struct TokenDispatchHolder {
             }
 
             /// @brief String トークンを読み取る。
-            DispatchValue readString(Parser& p) const
+            DispatchValue readString(JsonParser& p) const
             {
                 std::string s;
                 p.readTo(s);
@@ -1011,7 +1011,7 @@ TEST(JsonElementConverterTest, VariantElementConverterDerivedCustomizesString) {
             tmp += value;
             writer.writeObject(tmp);
         }
-        Var readString(Parser& parser) const {
+        Var readString(JsonParser& parser) const {
             std::string s;
             parser.readTo(s);
             if (s.rfind("PFX:", 0) != 0) {

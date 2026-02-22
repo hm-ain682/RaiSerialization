@@ -4,7 +4,7 @@
 fast, dependency-free parsing and convenient, declarative mappings between C++ types and JSON.
 
 ## Key features ✅
-- Zero-dependency JSON5 tokenizer, parser, and writer
+- Zero-dependency JSON5 tokenizer, JsonParser, and writer
 - Declarative field descriptors: `getRequiredField`, `getDefaultOmittedField`, `getInitialOmittedField`
 - Enum and polymorphic converters: `getEnumConverter`, `getPolymorphicConverter`, `getPolymorphicArrayConverter`
 - Polymorphic object support (single object and arrays) using type tags
@@ -279,7 +279,7 @@ struct CustomData {
 - `src/Serialization/Json/JsonTokenizer.cppm`: JSON5 tokenizer with comment and whitespace handling.
 - `src/Serialization/TokenManager.cppm`: Token queue abstraction for thread-safe parsing.
 - `src/Serialization/FormatIO.cppm`: Default format aliases (`FormatReader`/`FormatWriter`) used by serializer internals.
-- `src/Serialization/Parser.cppm`: Token-based parser with strong type checks and unknown-key tracking.
+- `src/Serialization/Json/JsonParser.cppm`: Token-based JsonParser with strong type checks and unknown-key tracking.
 - `src/Serialization/Json/JsonWriter.cppm`: JSON5 writer with identifier-aware key emission and escaping.
 - `src/Serialization/ObjectConverter.cppm`: Converters for primitives, enums, containers, pointers, and custom types.
 - `src/Serialization/PolymorphicConverter.cppm`: Polymorphic converters with type tags.

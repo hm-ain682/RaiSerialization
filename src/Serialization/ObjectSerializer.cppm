@@ -125,7 +125,7 @@ public:
             }
             const std::size_t fieldIndex = *foundIndex;
             if (seen[fieldIndex]) {
-                throw std::runtime_error(std::string("Parser: duplicate key '") + k + "'");
+                throw std::runtime_error(std::string("JsonParser: duplicate key '") + k + "'");
             }
             seen[fieldIndex] = true;
 

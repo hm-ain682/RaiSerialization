@@ -1,4 +1,4 @@
-// @file Parser.cppm
+// @file JsonParser.cppm
 // @brief JSON5パーサーの定義。トークン列からオブジェクトを構築する。
 
 module;
@@ -8,7 +8,7 @@ module;
 #include <variant>
 #include <vector>
 
-export module rai.serialization.parser;
+export module rai.serialization.json_parser;
 
 import rai.serialization.token_manager;
 
@@ -16,9 +16,9 @@ export namespace rai::serialization {
 
 // @brief トークン管理型が満たすべきインターフェース
 
-// ******************************************************************************** Parser
+// ******************************************************************************** JsonParser
 // @brief JSON5パーサー（トークン列からオブジェクトを構築）
-class Parser {
+class JsonParser {
     // ******************************************************************************** トークン取得
 private:
     // 次のトークンを取得して消費
@@ -33,7 +33,7 @@ private:
 public:
     // @brief コンストラクタ（トークン管理オブジェクトを指定）
     // @param tokenManager トークン管理オブジェクトの参照
-    explicit Parser(TokenManager& tokenManager) : tokenManager_(tokenManager) {}
+    explicit JsonParser(TokenManager& tokenManager) : tokenManager_(tokenManager) {}
 
     // ******************************************************************************** トークン読み取り
 public:
@@ -115,7 +115,7 @@ public:
         }
         if (std::get<json_token_detail::KeyVal>(t.value).v != expected) {
             throw std::runtime_error(
-                std::string("Parser: unexpected key '") +
+                std::string("JsonParser: unexpected key '") +
                 std::get<json_token_detail::KeyVal>(t.value).v + "', expected '" + std::string(expected) + "'");
         }
     }
@@ -174,7 +174,7 @@ public:
                 out = str[0];
                 return;
             }
-            throw std::runtime_error("Parser: expected single character string");
+            throw std::runtime_error("JsonParser: expected single character string");
         }
         typeError("string");
     }
@@ -202,7 +202,7 @@ public:
                 out = static_cast<char8_t>(static_cast<unsigned char>(str[0]));
                 return;
             }
-            throw std::runtime_error("Parser: expected single byte string for char8_t");
+            throw std::runtime_error("JsonParser: expected single byte string for char8_t");
         }
         typeError("string");
     }
@@ -215,15 +215,15 @@ public:
             char32_t codePoint;
             size_t byteCount;
             if (!decodeUtf8FirstCodePoint(str, codePoint, byteCount)) {
-                throw std::runtime_error("Parser: invalid UTF-8 sequence for char16_t");
+                throw std::runtime_error("JsonParser: invalid UTF-8 sequence for char16_t");
             }
             // UTF-8文字列全体が1コードポイントであることを確認
             if (byteCount != str.size()) {
-                throw std::runtime_error("Parser: char16_t requires single code point (multi-character string given)");
+                throw std::runtime_error("JsonParser: char16_t requires single code point (multi-character string given)");
             }
             // BMP範囲のみサポート（入れる先が1要素しかないのでサロゲートペアには対応できない）
             if (codePoint > 0xFFFF) {
-                throw std::runtime_error("Parser: char16_t does not support code points beyond BMP (U+FFFF)");
+                throw std::runtime_error("JsonParser: char16_t does not support code points beyond BMP (U+FFFF)");
             }
 
             out = static_cast<char16_t>(codePoint);
@@ -241,12 +241,12 @@ public:
             size_t byteCount;
 
             if (!decodeUtf8FirstCodePoint(str, codePoint, byteCount)) {
-                throw std::runtime_error("Parser: invalid UTF-8 sequence for char32_t");
+                throw std::runtime_error("JsonParser: invalid UTF-8 sequence for char32_t");
             }
 
             // UTF-8文字列全体が1コードポイントであることを確認
             if (byteCount != str.size()) {
-                throw std::runtime_error("Parser: char32_t requires single code point (multi-character string given)");
+                throw std::runtime_error("JsonParser: char32_t requires single code point (multi-character string given)");
             }
 
             out = codePoint;
@@ -388,7 +388,7 @@ public:
 
 private:
     [[noreturn]] static void typeError(const char* expected) {
-        throw std::runtime_error(std::string("Parser: expected ") + expected);
+        throw std::runtime_error(std::string("JsonParser: expected ") + expected);
     }
 
     // ******************************************************************************** メンバー変数
