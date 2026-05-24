@@ -1,17 +1,10 @@
 ﻿// @file JsonBenchmark.cpp
 // @brief JSONパーサーのパフォーマンス計測
 
-import rai.serialization.field_serializer;
-import rai.serialization.object_converter;
-import rai.serialization.json_writer;
-import rai.serialization.json_parser;
-import rai.serialization.json_tokenizer;
+import rai.serialization.core;
+import rai.serialization.json;
 import rai.serialization.token_manager;
-import rai.serialization.object_serializer;
 import rai.serialization.json_io;
-import rai.serialization.polymorphic_converter;
-import rai.serialization.parallel_input_stream_source;
-import rai.serialization.reading_ahead_buffer;
 import rai.collection.sorted_hash_array_map;
 #include <gtest/gtest.h>
 #include <chrono>
