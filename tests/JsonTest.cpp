@@ -175,6 +175,87 @@ struct Holder {
 // FieldSerializer の既定値と書き出し省略に関するテスト
 // ********************************************************************************
 
+struct ExternalPB {
+    virtual ~ExternalPB() = default;
+    virtual bool operator==(const ExternalPB& other) const = 0;
+};
+
+struct ExternalOne : public ExternalPB {
+    int x = 0;
+
+    bool operator==(const ExternalPB& other) const override {
+        auto* p = dynamic_cast<const ExternalOne*>(&other);
+        return p != nullptr && x == p->x;
+    }
+};
+
+struct ExternalTwo : public ExternalPB {
+    std::string s;
+
+    bool operator==(const ExternalPB& other) const override {
+        auto* p = dynamic_cast<const ExternalTwo*>(&other);
+        return p != nullptr && s == p->s;
+    }
+};
+
+inline const auto externalOneFields = getFieldSet(
+    getRequiredField(&ExternalOne::x, "x")
+);
+
+inline const auto externalTwoFields = getFieldSet(
+    getRequiredField(&ExternalTwo::s, "s")
+);
+
+using ExternalPtr = std::unique_ptr<ExternalPB>;
+using ExternalEntry = PolymorphicSerializerEntry<ExternalPtr>;
+using ExternalMapEntry = std::pair<std::string_view, ExternalEntry>;
+
+inline const auto externalEntriesMap = rai::collection::makeSortedHashArrayMap(
+    ExternalMapEntry{ "One", ExternalEntry{
+        std::type_index(typeid(ExternalOne)),
+        []() -> ExternalPtr { return std::make_unique<ExternalOne>(); },
+        externalOneFields
+    } },
+    ExternalMapEntry{ "Two", ExternalEntry{
+        std::type_index(typeid(ExternalTwo)),
+        []() -> ExternalPtr { return std::make_unique<ExternalTwo>(); },
+        externalTwoFields
+    } }
+);
+
+struct ExternalHolder {
+    ExternalPtr item;
+    std::vector<ExternalPtr> arr;
+
+    const ObjectSerializer& serializer() const {
+        static const auto itemConverter =
+            getPolymorphicConverter<decltype(item)>(externalEntriesMap, "kind");
+        static const auto arrayConverter =
+            getPolymorphicArrayConverter<decltype(arr)>(externalEntriesMap, "kind");
+        static const auto fields = getFieldSet(
+            getRequiredField(&ExternalHolder::item, "item", itemConverter),
+            getRequiredField(&ExternalHolder::arr, "arr", arrayConverter)
+        );
+        return fields;
+    }
+
+    bool equals(const ExternalHolder& other) const {
+        bool itemMatch = (item == nullptr && other.item == nullptr) ||
+            (item != nullptr && other.item != nullptr && *item == *other.item);
+        if (!itemMatch || arr.size() != other.arr.size()) {
+            return false;
+        }
+        for (size_t i = 0; i < arr.size(); ++i) {
+            bool elemMatch = (arr[i] == nullptr && other.arr[i] == nullptr) ||
+                (arr[i] != nullptr && other.arr[i] != nullptr && *arr[i] == *other.arr[i]);
+            if (!elemMatch) {
+                return false;
+            }
+        }
+        return true;
+    }
+};
+
 struct DefaultFieldTest {
     int a = 0;
     int b = 0;
@@ -272,6 +353,21 @@ TEST(JsonPolymorphicTest, WriteAndReadRoundTripUsingCustomKey) {
     Holder original;
     original.item = std::move(one);
     testJsonRoundTrip(original, "{item:{kind:\"One\",x:99},arr:[]}");
+}
+
+TEST(JsonPolymorphicTest, ExternalSerializerEntryRoundTrip) {
+    auto one = std::make_unique<ExternalOne>();
+    one->x = 7;
+    ExternalHolder original;
+    original.item = std::move(one);
+
+    auto two = std::make_unique<ExternalTwo>();
+    two->s = "abc";
+    original.arr.push_back(std::move(two));
+    original.arr.push_back(nullptr);
+
+    testJsonRoundTrip(original,
+        "{item:{kind:\"One\",x:7},arr:[{kind:\"Two\",s:\"abc\"},null]}");
 }
 
 TEST(JsonFieldDefaults, MissingKeySetsDefault) {

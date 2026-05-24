@@ -330,6 +330,55 @@ struct Drawing {
 > Note: Polymorphic converters accept an optional `allowNull` flag (default: `true`).
 ```
 
+### Polymorphic fields with external serializers
+If the polymorphic classes do not expose `serializer()`, register each concrete type with
+`PolymorphicSerializerEntry`. The entry stores the runtime type, factory, and external
+`ObjectSerializer`.
+
+```cpp
+struct Shape {
+    virtual ~Shape() = default;
+};
+
+struct Circle : Shape {
+    double radius = 0.0;
+};
+
+struct Rectangle : Shape {
+    double width = 0.0;
+    double height = 0.0;
+};
+
+static const auto circleFields = rai::serialization::getFieldSet(
+    rai::serialization::getRequiredField(&Circle::radius, "radius")
+);
+
+static const auto rectangleFields = rai::serialization::getFieldSet(
+    rai::serialization::getRequiredField(&Rectangle::width, "width"),
+    rai::serialization::getRequiredField(&Rectangle::height, "height")
+);
+
+using ShapePtr = std::unique_ptr<Shape>;
+using ShapeEntry = rai::serialization::PolymorphicSerializerEntry<ShapePtr>;
+using ShapeMapEntry = std::pair<std::string_view, ShapeEntry>;
+
+inline const auto shapeEntriesMap = rai::collection::makeSortedHashArrayMap(
+    ShapeMapEntry{ "Circle", ShapeEntry{
+        std::type_index(typeid(Circle)),
+        []() -> ShapePtr { return std::make_unique<Circle>(); },
+        circleFields
+    } },
+    ShapeMapEntry{ "Rectangle", ShapeEntry{
+        std::type_index(typeid(Rectangle)),
+        []() -> ShapePtr { return std::make_unique<Rectangle>(); },
+        rectangleFields
+    } }
+);
+```
+
+Writing uses `typeid(*ptr)` to select the matching entry, so the pointed-to base type must be polymorphic
+(for example, declare a virtual destructor).
+
 ## Custom read/write methods (write / read) ✍️
 If you prefer full control, implement `void write(FormatWriter&) const` and
 `void read(FormatReader&)` on your type. These methods are also used automatically
