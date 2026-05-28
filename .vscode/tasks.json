@@ -18,6 +18,22 @@
       "problemMatcher": []
     },
     {
+      "label": "configure (MSVC, debug)",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "--preset", "msvc"
+      ],
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
       "label": "build RaiSerialization_JsonTest",
       "type": "shell",
       "command": "cmake",
@@ -39,6 +55,24 @@
       "problemMatcher": ["$msCompile"]
     },
     {
+      "label": "build RaiSerialization_JsonTest (MSVC)",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "--build", "${workspaceFolder}/build/msvc",
+        "--config", "Debug",
+        "--target", "RaiSerialization_JsonTest"
+      ],
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "problemMatcher": ["$msCompile"]
+    },
+    {
       "label": "build RaiSerialization_JsonBenchmark",
       "type": "shell",
       "command": "cmake",
@@ -49,8 +83,27 @@
         "--target", "RaiSerialization_JsonBenchmark"
       ],
       "group": {
-        "kind": "build",
+        "kind": "build"
       },
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "problemMatcher": ["$msCompile"]
+    },
+    {
+      "label": "build RaiSerialization_JsonBenchmark (MSVC)",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "--build",
+        "${workspaceFolder}/build/msvc",
+        "--config", "Debug",
+        "--target", "RaiSerialization_JsonBenchmark"
+      ],
+      "group": "build",
       "presentation": {
         "echo": true,
         "reveal": "always",
@@ -66,6 +119,23 @@
       "args": [
         "--preset",
         "clang-debug"
+      ],
+      "group": "test",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "test (MSVC, debug)",
+      "type": "shell",
+      "command": "ctest",
+      "args": [
+        "--preset",
+        "msvc-debug"
       ],
       "group": "test",
       "presentation": {

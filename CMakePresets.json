@@ -31,6 +31,19 @@
         "RAISERIALIZATION_BUILD_TESTS": "ON",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
+    },
+    {
+      "name": "msvc",
+      "displayName": "Configure with MSVC cl",
+      "description": "Use MSVC cl with Ninja (requires a Visual Studio developer environment)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/msvc",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "cl",
+        "CMAKE_CXX_COMPILER": "cl",
+        "RAISERIALIZATION_BUILD_TESTS": "ON",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -57,6 +70,18 @@
       "configurePreset": "clang-cl",
       "displayName": "Build (clang-cl) - Release",
       "configuration": "Release"
+    },
+    {
+      "name": "msvc-debug",
+      "configurePreset": "msvc",
+      "displayName": "Build (MSVC) - Debug",
+      "configuration": "Debug"
+    },
+    {
+      "name": "msvc-release",
+      "configurePreset": "msvc",
+      "displayName": "Build (MSVC) - Release",
+      "configuration": "Release"
     }
   ],
   "testPresets": [
@@ -73,6 +98,15 @@
       "name": "clang-cl-debug",
       "configurePreset": "clang-cl",
       "displayName": "Test (clang-cl) - Debug",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "msvc-debug",
+      "configurePreset": "msvc",
+      "displayName": "Test (MSVC) - Debug",
       "configuration": "Debug",
       "output": {
         "outputOnFailure": true
