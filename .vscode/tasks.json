@@ -59,7 +59,8 @@
       "type": "shell",
       "command": "cmake",
       "args": [
-        "--build", "${workspaceFolder}/build/msvc",
+        "--build",
+        "--preset", "msvc-debug",
         "--config", "Debug",
         "--target", "RaiSerialization_JsonTest"
       ],
@@ -99,7 +100,7 @@
       "command": "cmake",
       "args": [
         "--build",
-        "${workspaceFolder}/build/msvc",
+        "--preset", "msvc-debug",
         "--config", "Debug",
         "--target", "RaiSerialization_JsonBenchmark"
       ],
