@@ -329,6 +329,67 @@ constexpr auto getColumnarContainerConverter(const Serializer& serializer) {
     return ColumnarContainerConverter<Container, Serializer>{serializer};
 }
 
+// ******************************************************************************** 通常のJSONオブジェクト形式のmap
+
+/// @brief map-like container を JSON object 形式で変換する Converter。
+/// @details キーは JSON object の property name として扱うため、現在は std::string key のみ対応する。
+///          mapped value には任意の ObjectConverter を指定できる。
+export template <typename Container, typename MappedConverter>
+struct MapConverter {
+    using Value = Container;
+    using KeyType = std::remove_cvref_t<typename Container::key_type>;
+    using MappedType = std::remove_cvref_t<typename Container::mapped_type>;
+    using MappedConverterType = std::remove_cvref_t<MappedConverter>;
+
+    static_assert(std::same_as<KeyType, std::string>,
+        "MapConverter currently supports std::string keys only");
+    static_assert(IsObjectConverter<MappedConverterType, MappedType>,
+        "MapConverter requires MappedConverter to satisfy IsObjectConverter for mapped type");
+
+    constexpr explicit MapConverter(const MappedConverterType& mappedConverter)
+        : mappedConverter_(&mappedConverter) {}
+
+    void write(FormatWriter& writer, const Value& value) const {
+        writer.startObject();
+        for (const auto& item : value) {
+            writer.key(item.first);
+            mappedConverter_->write(writer, item.second);
+        }
+        writer.endObject();
+    }
+
+    Value read(FormatReader& parser) const {
+        Value out{};
+        parser.startObject();
+        while (!parser.nextIsEndObject()) {
+            KeyType key = parser.nextKey();
+            MappedType mapped = mappedConverter_->read(parser);
+            insertContainerElement(out, std::make_pair(std::move(key), std::move(mapped)));
+        }
+        parser.endObject();
+        return out;
+    }
+
+private:
+    const MappedConverterType* mappedConverter_{};
+};
+
+/// @brief mapped value 用 converter を明示して MapConverter を作成する。
+export template <typename Container, typename MappedConverter>
+constexpr auto getMapConverter(const MappedConverter& mappedConverter) {
+    return MapConverter<Container, MappedConverter>(mappedConverter);
+}
+
+/// @brief mapped value の既定 converter を使って MapConverter を作成する。
+export template <typename Container>
+constexpr const auto& getMapConverter() {
+    using MappedType = std::remove_cvref_t<typename Container::mapped_type>;
+    const auto& mappedConverter = getConverter<MappedType>();
+    using MappedConverterType = std::remove_cvref_t<decltype(mappedConverter)>;
+    static const MapConverter<Container, MappedConverterType> converter(mappedConverter);
+    return converter;
+}
+
 // ******************************************************************************** 三重配列形式のmap
 
 /// @brief スカラー値を表すプレースホルダー。

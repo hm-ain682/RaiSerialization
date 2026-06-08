@@ -6,6 +6,7 @@
 #include <set>
 #include <memory>
 #include <algorithm>
+#include <functional>
 import rai.serialization.core;
 import rai.serialization.json;
 import rai.serialization.json_io;
@@ -383,6 +384,158 @@ TEST(JsonIOConverterTest, ColumnarContainerConverterRoundTrip) {
     testJsonRoundTrip(original,
         "[[\"id\",\"name\"],[1,\"one\"],[2,\"two\"]]",
         converter);
+}
+
+// ********************************************************************************
+// MapConverter テスト
+// ********************************************************************************
+
+TEST(JsonIOConverterTest, MapConverterScalarRoundTrip) {
+    std::map<std::string, int> original{
+        {"a", 1},
+        {"b", 2}
+    };
+    const auto& converter = getMapConverter<decltype(original)>();
+
+    testJsonRoundTrip(original, "{a:1,b:2}", converter);
+}
+
+struct MapConverterObjectValue {
+    int id = 0;
+    std::string name;
+
+    bool operator==(const MapConverterObjectValue& other) const {
+        return id == other.id && name == other.name;
+    }
+};
+
+static auto getMapConverterObjectValueConverter() {
+    static const auto fields = getFieldSet(
+        getRequiredField(&MapConverterObjectValue::id, "id"),
+        getRequiredField(&MapConverterObjectValue::name, "name")
+    );
+    return getObjectSerializerConverter<MapConverterObjectValue>(fields);
+}
+
+TEST(JsonIOConverterTest, MapConverterObjectSerializerRoundTrip) {
+    std::map<std::string, MapConverterObjectValue> original{
+        {"first", {1, "one"}},
+        {"second", {2, "two"}}
+    };
+    auto valueConverter = getMapConverterObjectValueConverter();
+    auto converter = getMapConverter<decltype(original)>(valueConverter);
+
+    testJsonRoundTrip(original,
+        "{first:{id:1,name:\"one\"},second:{id:2,name:\"two\"}}",
+        converter);
+}
+
+struct MapPolymorphicBase {
+    virtual ~MapPolymorphicBase() = default;
+    virtual const ObjectSerializer& serializer() const {
+        static const auto fields = FieldsObjectSerializer<MapPolymorphicBase>{};
+        return fields;
+    }
+    virtual bool equals(const MapPolymorphicBase& other) const = 0;
+};
+
+struct MapPolymorphicOne : MapPolymorphicBase {
+    int x = 0;
+
+    const ObjectSerializer& serializer() const override {
+        static const auto fields = getFieldSet(
+            getRequiredField(&MapPolymorphicOne::x, "x")
+        );
+        return fields;
+    }
+
+    bool equals(const MapPolymorphicBase& other) const override {
+        const auto* typed = dynamic_cast<const MapPolymorphicOne*>(&other);
+        return typed != nullptr && x == typed->x;
+    }
+};
+
+struct MapPolymorphicTwo : MapPolymorphicBase {
+    std::string s;
+
+    const ObjectSerializer& serializer() const override {
+        static const auto fields = getFieldSet(
+            getRequiredField(&MapPolymorphicTwo::s, "s")
+        );
+        return fields;
+    }
+
+    bool equals(const MapPolymorphicBase& other) const override {
+        const auto* typed = dynamic_cast<const MapPolymorphicTwo*>(&other);
+        return typed != nullptr && s == typed->s;
+    }
+};
+
+using MapPolymorphicPtr = std::unique_ptr<MapPolymorphicBase>;
+using MapPolymorphicEntry =
+    std::pair<std::string_view, std::function<MapPolymorphicPtr()>>;
+
+inline const auto mapPolymorphicEntries = rai::collection::makeSortedHashArrayMap(
+    MapPolymorphicEntry{ "One", []() -> MapPolymorphicPtr {
+        return std::make_unique<MapPolymorphicOne>();
+    } },
+    MapPolymorphicEntry{ "Two", []() -> MapPolymorphicPtr {
+        return std::make_unique<MapPolymorphicTwo>();
+    } }
+);
+
+struct MapPolymorphicHolder {
+    std::map<std::string, MapPolymorphicPtr> items;
+
+    const ObjectSerializer& serializer() const {
+        static const auto valueConverter =
+            getPolymorphicConverter<MapPolymorphicPtr>(
+                mapPolymorphicEntries, "kind");
+        static const auto mapConverter =
+            getMapConverter<decltype(items)>(valueConverter);
+        static const auto fields = getFieldSet(
+            getRequiredField(&MapPolymorphicHolder::items, "items", mapConverter)
+        );
+        return fields;
+    }
+
+    bool equals(const MapPolymorphicHolder& other) const {
+        if (items.size() != other.items.size()) {
+            return false;
+        }
+        for (const auto& [key, value] : items) {
+            auto it = other.items.find(key);
+            if (it == other.items.end()) {
+                return false;
+            }
+            if (value == nullptr || it->second == nullptr) {
+                if (value != nullptr || it->second != nullptr) {
+                    return false;
+                }
+                continue;
+            }
+            if (!value->equals(*it->second)) {
+                return false;
+            }
+        }
+        return true;
+    }
+};
+
+TEST(JsonIOConverterTest, MapConverterPolymorphicUniquePtrRoundTrip) {
+    MapPolymorphicHolder original;
+    original.items.emplace("none", nullptr);
+
+    auto one = std::make_unique<MapPolymorphicOne>();
+    one->x = 10;
+    original.items.emplace("one", std::move(one));
+
+    auto two = std::make_unique<MapPolymorphicTwo>();
+    two->s = "abc";
+    original.items.emplace("two", std::move(two));
+
+    testJsonRoundTrip(original,
+        "{items:{none:null,one:{kind:\"One\",x:10},two:{kind:\"Two\",s:\"abc\"}}}");
 }
 
 // ********************************************************************************

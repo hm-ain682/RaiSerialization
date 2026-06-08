@@ -169,6 +169,64 @@ int main() {
 Notes:
 - `getObjectSerializerConverter<T>(serializer)` is the preferred way to override nested object fields explicitly.
 
+## Using getMapConverter 🧩
+Use `getMapConverter<Map>(mappedConverter)` when you want to serialize a
+`std::map<std::string, T>`-like value as a JSON object and explicitly choose how
+each mapped value is converted.
+
+```cpp
+import rai.serialization.core;
+import rai.serialization.json_io;
+#include <map>
+
+struct Item {
+    int id{};
+    std::string name{};
+};
+
+static const auto itemFields = rai::serialization::getFieldSet(
+    rai::serialization::getRequiredField(&Item::id, "id"),
+    rai::serialization::getRequiredField(&Item::name, "name")
+);
+
+int main() {
+    using ItemMap = std::map<std::string, Item>;
+
+    auto itemConverter =
+        rai::serialization::getObjectSerializerConverter<Item>(itemFields);
+    auto mapConverter =
+        rai::serialization::getMapConverter<ItemMap>(itemConverter);
+
+    ItemMap original{
+        {"first", {1, "one"}},
+        {"second", {2, "two"}}
+    };
+
+    std::string json = rai::serialization::getJsonContent(original, mapConverter);
+    // json == {first:{id:1,name:"one"},second:{id:2,name:"two"}}
+
+    ItemMap parsed;
+    rai::serialization::readJsonString(json, parsed, mapConverter);
+}
+```
+
+For mapped values that already have a default converter, use `getMapConverter<Map>()`.
+For polymorphic mapped values, pass a polymorphic converter as the mapped-value converter:
+
+```cpp
+using ShapeMap = std::map<std::string, std::unique_ptr<Shape>>;
+
+static const auto shapeConverter =
+    rai::serialization::getPolymorphicConverter<std::unique_ptr<Shape>>(
+        shapeEntriesMap, "kind");
+static const auto shapeMapConverter =
+    rai::serialization::getMapConverter<ShapeMap>(shapeConverter);
+```
+
+Notes:
+- `getMapConverter` currently supports `std::string` keys because they are written as JSON object property names.
+- `getMapConverter` writes ordinary object-shaped JSON. Keep using `getColumnarMapConverter` when you need the compact columnar map format.
+
 ## Using getColumnarContainerConverter 🧩
 Use `getColumnarContainerConverter<T>(serializer)` for row-oriented containers when you want JSON output in a compact, columnar table format.
 
