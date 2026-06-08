@@ -329,64 +329,92 @@ constexpr auto getColumnarContainerConverter(const Serializer& serializer) {
     return ColumnarContainerConverter<Container, Serializer>{serializer};
 }
 
-// ******************************************************************************** 通常のJSONオブジェクト形式のmap
+// ******************************************************************************** 通常のJSON配列形式のmap
 
-/// @brief map-like container を JSON object 形式で変換する Converter。
-/// @details キーは JSON object の property name として扱うため、現在は std::string key のみ対応する。
-///          mapped value には任意の ObjectConverter を指定できる。
-export template <typename Container, typename MappedConverter>
+/// @brief map-like container を key/value ペアの JSON 配列として変換する Converter。
+/// @details key と value の両方に任意の ObjectConverter を指定できる。
+///          出力形式は [[key, value], ...]。
+export template <typename Container, typename KeyConverter, typename ValueConverter>
 struct MapConverter {
     using Value = Container;
     using KeyType = std::remove_cvref_t<typename Container::key_type>;
-    using MappedType = std::remove_cvref_t<typename Container::mapped_type>;
-    using MappedConverterType = std::remove_cvref_t<MappedConverter>;
+    using ValueType = std::remove_cvref_t<typename Container::mapped_type>;
+    using KeyConverterType = std::remove_cvref_t<KeyConverter>;
+    using ValueConverterType = std::remove_cvref_t<ValueConverter>;
 
-    static_assert(std::same_as<KeyType, std::string>,
-        "MapConverter currently supports std::string keys only");
-    static_assert(IsObjectConverter<MappedConverterType, MappedType>,
-        "MapConverter requires MappedConverter to satisfy IsObjectConverter for mapped type");
+    static_assert(IsObjectConverter<KeyConverterType, KeyType>,
+        "MapConverter requires KeyConverter to satisfy IsObjectConverter for key type");
+    static_assert(IsObjectConverter<ValueConverterType, ValueType>,
+        "MapConverter requires ValueConverter to satisfy IsObjectConverter for value type");
 
-    constexpr explicit MapConverter(const MappedConverterType& mappedConverter)
-        : mappedConverter_(&mappedConverter) {}
+    constexpr explicit MapConverter(
+        const KeyConverterType& keyConverter,
+        const ValueConverterType& valueConverter)
+        : keyConverter_(&keyConverter)
+        , valueConverter_(&valueConverter) {}
 
     void write(FormatWriter& writer, const Value& value) const {
-        writer.startObject();
+        writer.startArray();
         for (const auto& item : value) {
-            writer.key(item.first);
-            mappedConverter_->write(writer, item.second);
+            writer.startArray();
+            keyConverter_->write(writer, item.first);
+            valueConverter_->write(writer, item.second);
+            writer.endArray();
         }
-        writer.endObject();
+        writer.endArray();
     }
 
     Value read(FormatReader& parser) const {
         Value out{};
-        parser.startObject();
-        while (!parser.nextIsEndObject()) {
-            KeyType key = parser.nextKey();
-            MappedType mapped = mappedConverter_->read(parser);
-            insertContainerElement(out, std::make_pair(std::move(key), std::move(mapped)));
+        parser.startArray();
+        while (!parser.nextIsEndArray()) {
+            parser.startArray();
+            KeyType key = keyConverter_->read(parser);
+            ValueType value = valueConverter_->read(parser);
+            while (!parser.nextIsEndArray()) {
+                parser.skipValue();
+            }
+            parser.endArray();
+            insertContainerElement(out, std::make_pair(std::move(key), std::move(value)));
         }
-        parser.endObject();
+        parser.endArray();
         return out;
     }
 
 private:
-    const MappedConverterType* mappedConverter_{};
+    const KeyConverterType* keyConverter_{};
+    const ValueConverterType* valueConverter_{};
 };
 
-/// @brief mapped value 用 converter を明示して MapConverter を作成する。
-export template <typename Container, typename MappedConverter>
-constexpr auto getMapConverter(const MappedConverter& mappedConverter) {
-    return MapConverter<Container, MappedConverter>(mappedConverter);
+/// @brief key と value の converter を明示して MapConverter を作成する。
+export template <typename Container, typename KeyConverter, typename ValueConverter>
+constexpr auto getMapConverter(
+    const KeyConverter& keyConverter, const ValueConverter& valueConverter) {
+    return MapConverter<Container, KeyConverter, ValueConverter>(
+        keyConverter, valueConverter);
 }
 
-/// @brief mapped value の既定 converter を使って MapConverter を作成する。
+/// @brief key の既定 converter と value 用 converter から MapConverter を作成する。
+export template <typename Container, typename ValueConverter>
+constexpr auto getMapConverter(const ValueConverter& valueConverter) {
+    using KeyType = std::remove_cvref_t<typename Container::key_type>;
+    const auto& keyConverter = getConverter<KeyType>();
+    using KeyConverterType = std::remove_cvref_t<decltype(keyConverter)>;
+    return MapConverter<Container, KeyConverterType, ValueConverter>(
+        keyConverter, valueConverter);
+}
+
+/// @brief key と value の既定 converter を使って MapConverter を作成する。
 export template <typename Container>
 constexpr const auto& getMapConverter() {
-    using MappedType = std::remove_cvref_t<typename Container::mapped_type>;
-    const auto& mappedConverter = getConverter<MappedType>();
-    using MappedConverterType = std::remove_cvref_t<decltype(mappedConverter)>;
-    static const MapConverter<Container, MappedConverterType> converter(mappedConverter);
+    using KeyType = std::remove_cvref_t<typename Container::key_type>;
+    using ValueType = std::remove_cvref_t<typename Container::mapped_type>;
+    const auto& keyConverter = getConverter<KeyType>();
+    const auto& valueConverter = getConverter<ValueType>();
+    using KeyConverterType = std::remove_cvref_t<decltype(keyConverter)>;
+    using ValueConverterType = std::remove_cvref_t<decltype(valueConverter)>;
+    static const MapConverter<Container, KeyConverterType, ValueConverterType> converter(
+        keyConverter, valueConverter);
     return converter;
 }
 
@@ -407,7 +435,7 @@ struct ColumnarMapConverter {
     using Value = Container;
     using Element = std::remove_cvref_t<std::ranges::range_value_t<Container>>;
     using KeyType = std::remove_cvref_t<std::remove_const_t<typename Element::first_type>>;
-    using MappedType = std::remove_cvref_t<typename Element::second_type>;
+    using ValueType = std::remove_cvref_t<typename Element::second_type>;
     using KeySerializerType = std::remove_cvref_t<KeySerializer>;
     using ValueSerializerType = std::remove_cvref_t<ValueSerializer>;
 
@@ -415,8 +443,8 @@ struct ColumnarMapConverter {
         "ColumnarMapConverter requires Container to be a map-like container");
     static_assert(IsScalarOrFieldsSerializer<KeyType, KeySerializerType>,
         "ColumnarMapConverter requires KeySerializer to be a FieldsObjectSerializer for key type or scalar key type");
-    static_assert(IsScalarOrFieldsSerializer<MappedType, ValueSerializerType>,
-        "ColumnarMapConverter requires ValueSerializer to be a FieldsObjectSerializer for mapped type or scalar mapped type");
+    static_assert(IsScalarOrFieldsSerializer<ValueType, ValueSerializerType>,
+        "ColumnarMapConverter requires ValueSerializer to be a FieldsObjectSerializer for value type or scalar value type");
 
     explicit ColumnarMapConverter(
         const KeySerializerType& keySerializer, const ValueSerializerType& valueSerializer)
@@ -428,7 +456,7 @@ struct ColumnarMapConverter {
         writer.startArray();
         writer.startArray();
         writeHeaderItem<KeyType>(writer, keySerializer_, "Key");
-        writeHeaderItem<MappedType>(writer, valueSerializer_, "Value");
+        writeHeaderItem<ValueType>(writer, valueSerializer_, "Value");
         writer.endArray();
 
         for (const auto& item : value) {
@@ -476,7 +504,7 @@ public:
 
         parser.startArray();
         const auto keySchema = parseSchema<KeyType>(parser, keySerializer_, "Key");
-        const auto valueSchema = parseSchema<MappedType>(parser, valueSerializer_, "Value");
+        const auto valueSchema = parseSchema<ValueType>(parser, valueSerializer_, "Value");
         while (!parser.nextIsEndArray()) {
             parser.skipValue();
         }
@@ -486,12 +514,12 @@ public:
         while (!parser.nextIsEndArray()) {
             parser.startArray();
             KeyType key = readElement<KeyType>(parser, keySerializer_, keySchema);
-            MappedType mapped = readElement<MappedType>(parser, valueSerializer_, valueSchema);
+            ValueType value = readElement<ValueType>(parser, valueSerializer_, valueSchema);
             while (!parser.nextIsEndArray()) {
                 parser.skipValue();
             }
             parser.endArray();
-            insertContainerElement(out, std::make_pair(std::move(key), std::move(mapped)));
+            insertContainerElement(out, std::make_pair(std::move(key), std::move(value)));
         }
 
         parser.endArray();
@@ -560,9 +588,9 @@ requires IsMapLikeContainer<Container>
 constexpr const auto& getColumnarMapConverter() {
     using Element = std::remove_cvref_t<std::ranges::range_value_t<Container>>;
     using KeyType = std::remove_cvref_t<std::remove_const_t<typename Element::first_type>>;
-    using MappedType = std::remove_cvref_t<typename Element::second_type>;
+    using ValueType = std::remove_cvref_t<typename Element::second_type>;
     static_assert(IsScalarValue<KeyType>, "getColumnarMapConverter(): key type must be scalar");
-    static_assert(IsScalarValue<MappedType>, "getColumnarMapConverter(): mapped type must be scalar");
+    static_assert(IsScalarValue<ValueType>, "getColumnarMapConverter(): value type must be scalar");
     static ColumnarMapConverter<Container, ScalarSerializer, ScalarSerializer> converter
     (ScalarSerializer::instance, ScalarSerializer::instance);
     return converter;

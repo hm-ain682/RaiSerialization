@@ -397,8 +397,22 @@ TEST(JsonIOConverterTest, MapConverterScalarRoundTrip) {
     };
     const auto& converter = getMapConverter<decltype(original)>();
 
-    testJsonRoundTrip(original, "{a:1,b:2}", converter);
+    testJsonRoundTrip(original, "[[\"a\",1],[\"b\",2]]", converter);
 }
+
+struct MapConverterObjectKey {
+    std::string group;
+    int index = 0;
+
+    bool operator<(const MapConverterObjectKey& other) const {
+        return group < other.group ||
+            (group == other.group && index < other.index);
+    }
+
+    bool operator==(const MapConverterObjectKey& other) const {
+        return group == other.group && index == other.index;
+    }
+};
 
 struct MapConverterObjectValue {
     int id = 0;
@@ -409,6 +423,14 @@ struct MapConverterObjectValue {
     }
 };
 
+static auto getMapConverterObjectKeyConverter() {
+    static const auto fields = getFieldSet(
+        getRequiredField(&MapConverterObjectKey::group, "group"),
+        getRequiredField(&MapConverterObjectKey::index, "index")
+    );
+    return getObjectSerializerConverter<MapConverterObjectKey>(fields);
+}
+
 static auto getMapConverterObjectValueConverter() {
     static const auto fields = getFieldSet(
         getRequiredField(&MapConverterObjectValue::id, "id"),
@@ -418,15 +440,17 @@ static auto getMapConverterObjectValueConverter() {
 }
 
 TEST(JsonIOConverterTest, MapConverterObjectSerializerRoundTrip) {
-    std::map<std::string, MapConverterObjectValue> original{
-        {"first", {1, "one"}},
-        {"second", {2, "two"}}
+    std::map<MapConverterObjectKey, MapConverterObjectValue> original{
+        {{"a", 1}, {10, "one"}},
+        {{"b", 2}, {20, "two"}}
     };
+    auto keyConverter = getMapConverterObjectKeyConverter();
     auto valueConverter = getMapConverterObjectValueConverter();
-    auto converter = getMapConverter<decltype(original)>(valueConverter);
+    auto converter = getMapConverter<decltype(original)>(keyConverter, valueConverter);
 
     testJsonRoundTrip(original,
-        "{first:{id:1,name:\"one\"},second:{id:2,name:\"two\"}}",
+        "[[{group:\"a\",index:1},{id:10,name:\"one\"}],"
+        "[{group:\"b\",index:2},{id:20,name:\"two\"}]]",
         converter);
 }
 
@@ -535,7 +559,8 @@ TEST(JsonIOConverterTest, MapConverterPolymorphicUniquePtrRoundTrip) {
     original.items.emplace("two", std::move(two));
 
     testJsonRoundTrip(original,
-        "{items:{none:null,one:{kind:\"One\",x:10},two:{kind:\"Two\",s:\"abc\"}}}");
+        "{items:[[\"none\",null],[\"one\",{kind:\"One\",x:10}],"
+        "[\"two\",{kind:\"Two\",s:\"abc\"}]]}");
 }
 
 // ********************************************************************************

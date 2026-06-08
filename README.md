@@ -170,9 +170,9 @@ Notes:
 - `getObjectSerializerConverter<T>(serializer)` is the preferred way to override nested object fields explicitly.
 
 ## Using getMapConverter 🧩
-Use `getMapConverter<Map>(mappedConverter)` when you want to serialize a
-`std::map<std::string, T>`-like value as a JSON object and explicitly choose how
-each mapped value is converted.
+Use `getMapConverter<Map>(keyConverter, valueConverter)` when you want to
+serialize a map-like value and explicitly choose how keys and values are
+converted. The JSON shape is an array of key/value pairs: `[[key, value], ...]`.
 
 ```cpp
 import rai.serialization.core;
@@ -184,34 +184,55 @@ struct Item {
     std::string name{};
 };
 
+struct ItemKey {
+    std::string group{};
+    int index{};
+
+    bool operator<(const ItemKey& other) const {
+        return group < other.group ||
+            (group == other.group && index < other.index);
+    }
+};
+
+static const auto keyFields = rai::serialization::getFieldSet(
+    rai::serialization::getRequiredField(&ItemKey::group, "group"),
+    rai::serialization::getRequiredField(&ItemKey::index, "index")
+);
+
 static const auto itemFields = rai::serialization::getFieldSet(
     rai::serialization::getRequiredField(&Item::id, "id"),
     rai::serialization::getRequiredField(&Item::name, "name")
 );
 
 int main() {
-    using ItemMap = std::map<std::string, Item>;
+    using ItemMap = std::map<ItemKey, Item>;
 
+    auto keyConverter =
+        rai::serialization::getObjectSerializerConverter<ItemKey>(keyFields);
     auto itemConverter =
         rai::serialization::getObjectSerializerConverter<Item>(itemFields);
     auto mapConverter =
-        rai::serialization::getMapConverter<ItemMap>(itemConverter);
+        rai::serialization::getMapConverter<ItemMap>(keyConverter, itemConverter);
 
     ItemMap original{
-        {"first", {1, "one"}},
-        {"second", {2, "two"}}
+        {{"a", 1}, {10, "one"}},
+        {{"b", 2}, {20, "two"}}
     };
 
     std::string json = rai::serialization::getJsonContent(original, mapConverter);
-    // json == {first:{id:1,name:"one"},second:{id:2,name:"two"}}
+    // json == [[{group:"a",index:1},{id:10,name:"one"}],
+    //          [{group:"b",index:2},{id:20,name:"two"}]]
 
     ItemMap parsed;
     rai::serialization::readJsonString(json, parsed, mapConverter);
 }
 ```
 
-For mapped values that already have a default converter, use `getMapConverter<Map>()`.
-For polymorphic mapped values, pass a polymorphic converter as the mapped-value converter:
+For keys and values that already have default converters, use
+`getMapConverter<Map>()`. You can also provide only the mapped-value converter
+with `getMapConverter<Map>(valueConverter)`, in which case the key uses its
+default converter. For polymorphic values, pass a polymorphic converter
+as the value converter:
 
 ```cpp
 using ShapeMap = std::map<std::string, std::unique_ptr<Shape>>;
@@ -224,8 +245,7 @@ static const auto shapeMapConverter =
 ```
 
 Notes:
-- `getMapConverter` currently supports `std::string` keys because they are written as JSON object property names.
-- `getMapConverter` writes ordinary object-shaped JSON. Keep using `getColumnarMapConverter` when you need the compact columnar map format.
+- `getMapConverter` writes ordinary key/value entry arrays. Keep using `getColumnarMapConverter` when you need the compact columnar map format.
 
 ## Using getColumnarContainerConverter 🧩
 Use `getColumnarContainerConverter<T>(serializer)` for row-oriented containers when you want JSON output in a compact, columnar table format.
