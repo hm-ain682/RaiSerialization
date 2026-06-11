@@ -35,37 +35,50 @@ namespace rai::serialization {
 
 // ------------------------- Polymorphic helpers and fields -------------------------
 
-/// @brief ポインタ型から要素型を抽出するメタ関数。
-/// @tparam T ポインタ型（unique_ptr<T>、shared_ptr<T>、T*）。
+/// @brief pointer-like 型から参照先の要素型を取り出す。
+/// @details raw pointer と標準 smart pointer に加え、std::pointer_traits<P>::element_type
+///          を提供する独自 pointer-like 型も同じ経路で扱う。
 template <typename T>
-struct PointerElementType;
-
-template <typename T>
-struct PointerElementType<std::unique_ptr<T>> {
-    using type = T;
+struct PointerElementType {
+    using type = std::remove_cv_t<
+        typename std::pointer_traits<std::remove_cvref_t<T>>::element_type>;
 };
 
+/// @brief pointer-like 型から実ポインタを取得する。
+/// @details smart pointer 風の型は get() を使い、生ポインタはそのまま返す。
 template <typename T>
-struct PointerElementType<std::shared_ptr<T>> {
-    using type = T;
+constexpr auto getRawPointer(T& pointer) {
+    if constexpr (std::is_pointer_v<std::remove_cvref_t<T>>) {
+        return pointer;
+    }
+    else {
+        return pointer.get();
+    }
+}
+
+/// @brief get() で実ポインタを取り出せる pointer-like 型かどうかを判定する。
+/// @details 生ポインタは get() を持たないため、getRawPointer() 内で直接扱う。
+template <typename T>
+concept HasGetPointer = requires(T& pointer, const T& constPointer) {
+    typename PointerElementType<T>::type;
+    { getRawPointer(pointer) } -> std::convertible_to<typename PointerElementType<T>::type*>;
+    { getRawPointer(constPointer) } -> std::convertible_to<typename PointerElementType<T>::type*>;
 };
 
+/// @brief PolymorphicConverter が扱える nullable pointer-like 型かどうかを確認する concept。
+/// @details 必要な操作は、null の読み書き用の nullptr 構築/比較、書き込み時の !p、
+///          型判別用の *p、読み書き用 raw pointer を得る p.get()。
+///          生ポインタだけは get() を持たないため、そのまま raw pointer として扱う。
 template <typename T>
-struct PointerElementType<T*> {
-    using type = T;
-};
-
-/// @brief std::shared_ptr を判定する concept（element_type を確認し正確に判定）。
-/// @tparam T 判定対象の型。
-template <typename T>
-concept IsSharedPtr = requires {
-    typename T::element_type;
-} && std::is_same_v<T, std::shared_ptr<typename T::element_type>>;
-
-/// @brief ポインタ型（unique_ptr/shared_ptr/生ポインタ）であることを確認する concept。
-/// @tparam T 判定対象の型。
-template <typename T>
-concept IsSmartOrRawPointer = IsUniquePtr<T> || IsSharedPtr<T> || std::is_pointer_v<T>;
+concept IsSmartOrRawPointer = HasGetPointer<T>
+    && std::constructible_from<T, std::nullptr_t>
+    && requires(T& pointer, const T& constPointer) {
+        typename PointerElementType<T>::type;
+        { !constPointer } -> std::convertible_to<bool>;
+        { constPointer == nullptr } -> std::convertible_to<bool>;
+        { constPointer != nullptr } -> std::convertible_to<bool>;
+        { *constPointer } -> std::convertible_to<const typename PointerElementType<T>::type&>;
+    };
 
 /// @brief ポリモーフィック型用のファクトリ関数型（ポインタ型を返す）。
 export template <typename Ptr>
@@ -128,15 +141,15 @@ Ptr readPolymorphicInstance(JsonParser& parser,
     }();
     using BaseType = typename PointerElementType<Ptr>::type;
 
-    BaseType* raw = std::to_address(instance);
     // 外部 serializer エントリは serializer() を公開しない型向け。
     // 従来パスは既存の polymorphic map の動作を保つため、基底オブジェクトの
     // 仮想 serializer() を使う。
+    BaseType* raw = getRawPointer(instance);
     if constexpr (std::same_as<EntryValue, PolymorphicSerializerEntry<Ptr>>) {
         entry->serializer.get().readFields(parser, raw);
     }
     else if constexpr (HasSerializer<BaseType>) {
-        auto& fields = instance->serializer();
+        auto& fields = raw->serializer();
         fields.readFields(parser, raw);
     }
     else {
@@ -230,7 +243,7 @@ struct PolymorphicConverter {
         std::string typeName = getTypeNameFromMap(*ptr, entries_);
         writer.key(jsonKey_);
         writer.writeObject(typeName);
-        Element* raw = std::to_address(ptr);
+        Element* raw = getRawPointer(ptr);
         if constexpr (std::same_as<Entry, PolymorphicSerializerEntry<Ptr>>) {
             // 指し先オブジェクトに serializer() を要求せず、型に一致した
             // 登録エントリの serializer を使う。
@@ -246,7 +259,7 @@ struct PolymorphicConverter {
                 "PolymorphicConverter::write: serializer is not provided for polymorphic object");
         }
         else if constexpr (HasSerializer<Element>) {
-            auto& fields = ptr->serializer();
+            auto& fields = raw->serializer();
             fields.writeFields(writer, raw);
         }
         else {

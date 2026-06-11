@@ -15,6 +15,7 @@ import rai.collection.sorted_hash_array_map;
 #include <utility>
 #include <typeindex>
 #include <map>
+#include <memory>
 
 using namespace rai::serialization;
 using namespace rai::serialization::test;
@@ -168,6 +169,88 @@ struct Holder {
             }
         }
         return true;
+    }
+};
+
+template <typename T>
+class NonStdOwningPtr {
+public:
+    using element_type = T;
+
+    NonStdOwningPtr(std::nullptr_t = nullptr) {}
+    explicit NonStdOwningPtr(T* ptr)
+        : ptr_(ptr) {}
+
+    NonStdOwningPtr(NonStdOwningPtr&&) noexcept = default;
+    NonStdOwningPtr& operator=(NonStdOwningPtr&&) noexcept = default;
+    NonStdOwningPtr(const NonStdOwningPtr&) = delete;
+    NonStdOwningPtr& operator=(const NonStdOwningPtr&) = delete;
+
+    T& operator*() {
+        return *ptr_;
+    }
+
+    T& operator*() const {
+        return *ptr_;
+    }
+
+    T* get() const {
+        return ptr_.get();
+    }
+
+    explicit operator bool() const {
+        return static_cast<bool>(ptr_);
+    }
+
+    bool operator!() const {
+        return !ptr_;
+    }
+
+    friend bool operator==(const NonStdOwningPtr& ptr, std::nullptr_t) {
+        return ptr.ptr_ == nullptr;
+    }
+
+    friend bool operator==(std::nullptr_t, const NonStdOwningPtr& ptr) {
+        return ptr == nullptr;
+    }
+
+    friend bool operator!=(const NonStdOwningPtr& ptr, std::nullptr_t) {
+        return !(ptr == nullptr);
+    }
+
+    friend bool operator!=(std::nullptr_t, const NonStdOwningPtr& ptr) {
+        return !(ptr == nullptr);
+    }
+
+private:
+    std::unique_ptr<T> ptr_;
+};
+
+using NonStdPBPtr = NonStdOwningPtr<PB>;
+using NonStdMapEntry = std::pair<std::string_view, std::function<NonStdPBPtr()>>;
+
+inline const auto nonStdPbEntriesMap = rai::collection::makeSortedHashArrayMap(
+    NonStdMapEntry{ "One", []() { return NonStdPBPtr(new POne()); } },
+    NonStdMapEntry{ "Two", []() { return NonStdPBPtr(new PTwo()); } }
+);
+
+struct NonStdPtrHolder {
+    NonStdPBPtr item;
+
+    const ObjectSerializer& serializer() const {
+        static const auto itemConverter = getPolymorphicConverter<decltype(item)>(
+            nonStdPbEntriesMap, "kind");
+        static const auto fields = getFieldSet(
+            getRequiredField(&NonStdPtrHolder::item, "item", itemConverter)
+        );
+        return fields;
+    }
+
+    bool equals(const NonStdPtrHolder& other) const {
+        if (item == nullptr || other.item == nullptr) {
+            return item == nullptr && other.item == nullptr;
+        }
+        return *item == *other.item;
     }
 };
 
@@ -353,6 +436,14 @@ TEST(JsonPolymorphicTest, WriteAndReadRoundTripUsingCustomKey) {
     Holder original;
     original.item = std::move(one);
     testJsonRoundTrip(original, "{item:{kind:\"One\",x:99},arr:[]}");
+}
+
+TEST(JsonPolymorphicTest, NonStdPointerLikeRoundTrip) {
+    NonStdPtrHolder original;
+    original.item = NonStdPBPtr(new POne());
+    dynamic_cast<POne*>(&*original.item)->x = 123;
+
+    testJsonRoundTrip(original, "{item:{kind:\"One\",x:123}}");
 }
 
 TEST(JsonPolymorphicTest, ExternalSerializerEntryRoundTrip) {
