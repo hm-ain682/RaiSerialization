@@ -182,11 +182,12 @@ struct PolymorphicConverter {
         const Entries& entries, const char* jsonKey = "type", bool allowNull = true)
         : entries_(entries), jsonKey_(jsonKey), allowNull_(allowNull) {}
 
-    Ptr read(JsonParser& parser) const {
+    void read(JsonParser& parser, Ptr& out) const {
         if (allowNull_) {
-            return readPolymorphicInstanceOrNull<Ptr, Entry>(parser, entries_, jsonKey_);
+            out = readPolymorphicInstanceOrNull<Ptr, Entry>(parser, entries_, jsonKey_);
+            return;
         }
-        return readPolymorphicInstance<Ptr, Entry>(parser, entries_, jsonKey_);
+        out = readPolymorphicInstance<Ptr, Entry>(parser, entries_, jsonKey_);
     }
 
     void write(JsonWriter& writer, const Ptr& ptr) const {

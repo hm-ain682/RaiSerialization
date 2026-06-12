@@ -38,8 +38,8 @@ concept IsObjectConverter = std::is_class_v<Converter>
     && requires(const Converter& converter, FormatWriter& writer, const Value& value) {
         converter.write(writer, value);
     }
-    && requires(const Converter& converter, FormatReader& parser) {
-        { converter.read(parser) } -> std::same_as<Value>;
+    && requires(const Converter& converter, FormatReader& parser, Value& value) {
+        { converter.read(parser, value) } -> std::same_as<void>;
     };
 
 /// @brief readメソッドを持つ型を表すconcept。
@@ -111,10 +111,8 @@ struct FundamentalConverter {
         writer.writeObject(value);
     }
 
-    T read(JsonParser& parser) const {
-        T out{};
+    void read(JsonParser& parser, T& out) const {
         parser.readTo(out);
-        return out;
     }
 };
 
@@ -134,12 +132,10 @@ struct ObjectSerializerConverter {
         writer.endObject();
     }
 
-    Value read(JsonParser& parser) const {
-        Value out{};
+    void read(JsonParser& parser, Value& out) const {
         parser.startObject();
         serializer_.readFields(parser, static_cast<void*>(&out));
         parser.endObject();
-        return out;
     }
 
 private:
@@ -175,13 +171,11 @@ struct SerializerConverter {
         writer.endObject();
     }
 
-    T read(FormatReader& parser) const {
-        T obj{};
+    void read(FormatReader& parser, T& obj) const {
         parser.startObject();
         auto& fields = obj.serializer();
         fields.readFields(parser, static_cast<void*>(&obj));
         parser.endObject();
-        return obj;
     }
 };
 
@@ -205,10 +199,8 @@ struct ReadWriteFormatConverter {
     void write(FormatWriter& writer, const T& obj) const {
         obj.write(writer);
     }
-    T read(FormatReader& parser) const {
-        T out{};
+    void read(FormatReader& parser, T& out) const {
         out.read(parser);
-        return out;
     }
 };
 
@@ -246,13 +238,13 @@ struct OptionalConverter {
     /// @brief JSONからoptional値を読み込む。
     /// @param parser 入力元パーサ。
     /// @return 読み込んだ optional 値。
-    T read(JsonParser& parser) const {
+    void read(JsonParser& parser, T& out) const {
         if (parser.nextIsNull()) {
             parser.skipValue();
-            return std::nullopt;
+            out.reset();
+            return;
         }
-        Element element = elementConverter_.get().read(parser);
-        return T{ std::move(element) };
+        elementConverter_.get().read(parser, out.emplace());
     }
 
 private:
@@ -406,11 +398,12 @@ struct EnumConverter {
         throw std::runtime_error("Failed to convert enum to string");
     }
 
-    Enum read(JsonParser& parser) const {
+    void read(JsonParser& parser, Enum& out) const {
         std::string jsonValue;
         parser.readTo(jsonValue);
         if (auto v = map_.fromName(jsonValue)) {
-            return *v;
+            out = *v;
+            return;
         }
         throw std::runtime_error(std::string("Failed to convert string to enum: ") + jsonValue);
     }
@@ -550,13 +543,15 @@ struct PointerConverter {
         targetConverter_.get().write(writer, *ptr);
     }
 
-    T read(JsonParser& parser) const {
+    void read(JsonParser& parser, T& out) const {
         if (parser.nextIsNull()) {
             parser.skipValue();
-            return nullptr;
+            out = nullptr;
+            return;
         }
-        auto elem = targetConverter_.get().read(parser);
-        return pointerFactory_(std::move(elem));
+        Element elem{};
+        targetConverter_.get().read(parser, elem);
+        out = pointerFactory_(std::move(elem));
     }
 
 private:
@@ -623,7 +618,9 @@ struct TokenConverter {
 
     Value readStartObject(JsonParser& parser) const {
         if constexpr (HasSerializer<Value> || (HasReadFormat<Value> && HasWriteFormat<Value>)) {
-            return getConverter<Value>().read(parser);
+            Value value{};
+            getConverter<Value>().read(parser, value);
+            return value;
         }
         else {
             throw std::runtime_error("Object is not supported for TokenConverter");
@@ -670,15 +667,15 @@ struct TokenDispatchConverter {
         : tokenConverter_(conv) {}
 
     /// @brief トークン種別に応じて適切な変換関数を呼び出して値を読み取る。
-    ValueType read(JsonParser& parser) const {
+    void read(JsonParser& parser, ValueType& out) const {
         switch (parser.nextTokenType()) {
-        case JsonTokenType::Null:        return tokenConverter_.readNull(parser);
-        case JsonTokenType::Bool:        return tokenConverter_.readBool(parser);
-        case JsonTokenType::Integer:     return tokenConverter_.readInteger(parser);
-        case JsonTokenType::Number:      return tokenConverter_.readNumber(parser);
-        case JsonTokenType::String:      return tokenConverter_.readString(parser);
-        case JsonTokenType::StartObject: return tokenConverter_.readStartObject(parser);
-        case JsonTokenType::StartArray:  return tokenConverter_.readStartArray(parser);
+        case JsonTokenType::Null:        out = tokenConverter_.readNull(parser); return;
+        case JsonTokenType::Bool:        out = tokenConverter_.readBool(parser); return;
+        case JsonTokenType::Integer:     out = tokenConverter_.readInteger(parser); return;
+        case JsonTokenType::Number:      out = tokenConverter_.readNumber(parser); return;
+        case JsonTokenType::String:      out = tokenConverter_.readString(parser); return;
+        case JsonTokenType::StartObject: out = tokenConverter_.readStartObject(parser); return;
+        case JsonTokenType::StartArray:  out = tokenConverter_.readStartArray(parser); return;
         default: throw std::runtime_error("Unsupported token type");
         }
     }
@@ -786,7 +783,7 @@ struct VariantElementConverter : TokenConverter<Variant> {
             ((void)(!found && ([&]() {
                 using Alt = std::remove_cvref_t<typename std::variant_alternative_t<I, Variant>>;
                 if constexpr (HasSerializer<Alt> || (HasReadFormat<Alt> && HasWriteFormat<Alt>)) {
-                    out = getConverter<Alt>().read(parser);
+                    getConverter<Alt>().read(parser, out.template emplace<Alt>());
                     found = true;
                 }
                 return 0;

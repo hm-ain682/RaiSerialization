@@ -14,6 +14,7 @@ import rai.collection.sorted_hash_array_map;
 #include <set>
 #include <utility>
 #include <typeindex>
+#include <type_traits>
 #include <map>
 #include <memory>
 
@@ -814,10 +815,10 @@ struct IntegerStringConverter {
     /// @brief JSON 文字列から整数値を読み込む。
     /// @param parser 読み込み元のParser。
     /// @return 読み込んだ整数値。
-    int read(FormatReader& parser) const {
+    void read(FormatReader& parser, int& out) const {
         std::string numberText;
         parser.readTo(numberText);
-        return std::stoi(numberText);
+        out = std::stoi(numberText);
     }
 };
 
@@ -895,6 +896,53 @@ TEST(JsonOptionalTest, UsesCustomElementConverter) {
     readJsonString("{numberAsString:\"105\"}", out);
     ASSERT_TRUE(out.numberAsString.has_value());
     EXPECT_EQ(*out.numberAsString, 105);
+}
+
+struct NonMovableValue {
+    int value = 0;
+
+    NonMovableValue() = default;
+    NonMovableValue(const NonMovableValue&) = delete;
+    NonMovableValue& operator=(const NonMovableValue&) = delete;
+    NonMovableValue(NonMovableValue&&) = delete;
+    NonMovableValue& operator=(NonMovableValue&&) = delete;
+};
+
+struct NonMovableValueConverter {
+    using Value = NonMovableValue;
+
+    void write(FormatWriter& writer, const Value& value) const {
+        writer.writeObject(value.value);
+    }
+
+    void read(FormatReader& parser, Value& out) const {
+        parser.readTo(out.value);
+    }
+};
+
+struct NonMovableHolder {
+    NonMovableValue item;
+
+    const ObjectSerializer& serializer() const {
+        static const NonMovableValueConverter converter{};
+        static const auto fields = getFieldSet(
+            getRequiredField(&NonMovableHolder::item, "item", converter)
+        );
+        return fields;
+    }
+
+    bool equals(const NonMovableHolder& other) const {
+        return item.value == other.item.value;
+    }
+};
+
+TEST(JsonObjectConverterTest, ReadsNonMovableMemberThroughConverter) {
+    static_assert(!std::is_copy_constructible_v<NonMovableValue>);
+    static_assert(!std::is_move_constructible_v<NonMovableValue>);
+
+    NonMovableHolder original;
+    original.item.value = 77;
+    testJsonRoundTrip(original, "{item:77}");
 }
 
 // ********************************************************************************

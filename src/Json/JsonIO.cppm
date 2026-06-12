@@ -136,7 +136,7 @@ export template <typename Converter>
 requires IsObjectConverter<Converter, typename Converter::Value>
 void readJsonObject(JsonParser& parser, typename Converter::Value& obj,
     const Converter& converter) {
-    obj = converter.read(parser);
+    converter.read(parser, obj);
 }
 
 /// @brief 文字列バッファからオブジェクトを読み込む（コア関数）。
@@ -217,7 +217,7 @@ void readJsonString(const std::string& jsonText, typename Converter::Value& out,
     tokenizer.tokenize();
 
     JsonParser parser(tokenManager);
-    out = converter.read(parser);
+    converter.read(parser, out);
     unknownKeysOut = std::move(parser.getUnknownKeys());
 }
 
@@ -482,7 +482,7 @@ void readJsonFile(const std::string& filename, typename Converter::Value& out,
     tokenizer.tokenize();
 
     JsonParser parser(tokenManager);
-    out = converter.read(parser);
+    converter.read(parser, out);
 }
 
 // write/readメソッドを持つ型専用のオーバーロード

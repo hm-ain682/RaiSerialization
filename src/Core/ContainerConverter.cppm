@@ -216,15 +216,14 @@ struct ContainerConverter {
     /// @brief JSON配列からコンテナを復元する。
     /// @param parser 入力JSONパーサ。
     /// @return 復元されたコンテナ。
-    Container read(JsonParser& parser) const {
-        Container out{};
+    void read(JsonParser& parser, Container& out) const {
         parser.startArray();
         while (!parser.nextIsEndArray()) {
-            auto elem = elementConverter_.get().read(parser);
+            Element elem{};
+            elementConverter_.get().read(parser, elem);
             insertContainerElement(out, std::move(elem));
         }
         parser.endArray();
-        return out;
     }
 
 private:
@@ -293,18 +292,16 @@ public:
     }
 
     /// @brief JSON配列から配列を復元。
-    Value read(FormatReader& parser) const {
+    void read(FormatReader& parser, Value& out) const {
         parser.startArray();
         auto fields = parseFieldOrder(parser, serializer_);
 
         // 各行データ
-        Value out{};
         while (!parser.nextIsEndArray()) {
             insertContainerElement(out,
                 readObjectRow<Element>(parser, serializer_, fields));
         }
         parser.endArray();
-        return out;
     }
 
 private:
@@ -364,13 +361,14 @@ struct MapConverter {
         writer.endArray();
     }
 
-    Value read(FormatReader& parser) const {
-        Value out{};
+    void read(FormatReader& parser, Value& out) const {
         parser.startArray();
         while (!parser.nextIsEndArray()) {
             parser.startArray();
-            KeyType key = keyConverter_->read(parser);
-            ValueType value = valueConverter_->read(parser);
+            KeyType key{};
+            keyConverter_->read(parser, key);
+            ValueType value{};
+            valueConverter_->read(parser, value);
             while (!parser.nextIsEndArray()) {
                 parser.skipValue();
             }
@@ -378,7 +376,6 @@ struct MapConverter {
             insertContainerElement(out, std::make_pair(std::move(key), std::move(value)));
         }
         parser.endArray();
-        return out;
     }
 
 private:
@@ -499,7 +496,7 @@ private:
     }
 
 public:
-    Value read(FormatReader& parser) const {
+    void read(FormatReader& parser, Value& out) const {
         parser.startArray();
 
         parser.startArray();
@@ -510,7 +507,6 @@ public:
         }
         parser.endArray();
 
-        Value out{};
         while (!parser.nextIsEndArray()) {
             parser.startArray();
             KeyType key = readElement<KeyType>(parser, keySerializer_, keySchema);
@@ -523,7 +519,6 @@ public:
         }
 
         parser.endArray();
-        return out;
     }
 
 private:
@@ -561,7 +556,9 @@ private:
             if (parser.nextIsEndArray()) {
                 return T{};
             }
-            return getConverter<T>().read(parser);
+            T out{};
+            getConverter<T>().read(parser, out);
+            return out;
         } else {
             return readObjectRow<T>(parser, serializer, fields);
         }

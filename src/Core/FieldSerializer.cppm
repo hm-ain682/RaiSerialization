@@ -198,7 +198,7 @@ struct FieldSerializer {
     /// @param parser 読み取り元の FormatReader。
     /// @param owner 代入先の所有者。
     void read(FormatReader& parser, Owner& owner) const {
-        owner.*member = converter_.get().read(parser);
+        converter_.get().read(parser, owner.*member);
     }
 
     /// @brief JSON項目（キーと値）を書き出す。
@@ -420,7 +420,8 @@ struct PropertySerializer {
     /// @param parser 読み取り元の FormatReader。
     /// @param owner 代入先の所有者。
     void read(FormatReader& parser, Owner& owner) const {
-        auto value = converter_.get().read(parser);
+        Value value{};
+        converter_.get().read(parser, value);
         std::invoke(setter_, owner, std::move(value));
     }
 

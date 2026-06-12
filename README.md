@@ -168,6 +168,10 @@ int main() {
 
 Notes:
 - `getObjectSerializerConverter<T>(serializer)` is the preferred way to override nested object fields explicitly.
+- Explicit converters satisfy `IsObjectConverter` by defining `using Value = T`,
+  `void write(FormatWriter&, const T&) const`, and `void read(FormatReader&, T&) const`.
+  `read` writes into the supplied object instead of returning a value, so converters can
+  deserialize non-copyable and non-movable types.
 
 ## Using getMapConverter 🧩
 Use `getMapConverter<Map>(keyConverter, valueConverter)` when you want to
