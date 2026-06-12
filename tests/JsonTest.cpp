@@ -202,10 +202,6 @@ public:
         return static_cast<bool>(ptr_);
     }
 
-    bool operator!() const {
-        return !ptr_;
-    }
-
     friend bool operator==(const NonStdOwningPtr& ptr, std::nullptr_t) {
         return ptr.ptr_ == nullptr;
     }
@@ -1165,10 +1161,10 @@ TEST(JsonElementConverterTest, UniquePtrUsesElementConverter) {
     struct Holder {
         std::unique_ptr<RWElement> item;
         const ObjectSerializer& serializer() const {
-            static const auto uniquePtrConverter =
-                getUniquePtrConverter<decltype(item)>();
+            static const auto pointerConverter =
+                getPointerConverter<decltype(item)>();
             static const auto fields = getFieldSet(
-                getRequiredField(&Holder::item, "item", uniquePtrConverter)
+                getRequiredField(&Holder::item, "item", pointerConverter)
             );
             return fields;
         }
@@ -1187,6 +1183,61 @@ TEST(JsonElementConverterTest, UniquePtrUsesElementConverter) {
     original.item = std::make_unique<RWElement>();
     original.item->x = 21;
     testJsonRoundTrip(original, "{item:{x:21}}" );
+}
+
+TEST(JsonElementConverterTest, SharedPtrUsesPointerConverter) {
+    struct Holder {
+        std::shared_ptr<RWElement> item;
+        const ObjectSerializer& serializer() const {
+            static const auto pointerConverter =
+                getPointerConverter<decltype(item)>();
+            static const auto fields = getFieldSet(
+                getRequiredField(&Holder::item, "item", pointerConverter)
+            );
+            return fields;
+        }
+        bool equals(const Holder& other) const {
+            if (item == nullptr || other.item == nullptr) {
+                return item == other.item;
+            }
+            return *item == *other.item;
+        }
+    };
+
+    Holder original;
+    original.item = std::make_shared<RWElement>();
+    original.item->x = 31;
+    testJsonRoundTrip(original, "{item:{x:31}}" );
+}
+
+TEST(JsonElementConverterTest, CustomPointerUsesPointerConverterFactory) {
+    struct Holder {
+        NonStdOwningPtr<RWElement> item;
+        const ObjectSerializer& serializer() const {
+            static const auto pointerConverter =
+                getPointerConverter<decltype(item)>(
+                    getConverter<RWElement>(),
+                    [](RWElement&& value) {
+                        return NonStdOwningPtr<RWElement>(
+                            new RWElement(std::move(value)));
+                    });
+            static const auto fields = getFieldSet(
+                getRequiredField(&Holder::item, "item", pointerConverter)
+            );
+            return fields;
+        }
+        bool equals(const Holder& other) const {
+            if (item == nullptr || other.item == nullptr) {
+                return item == nullptr && other.item == nullptr;
+            }
+            return *item == *other.item;
+        }
+    };
+
+    Holder original;
+    original.item = NonStdOwningPtr<RWElement>(new RWElement());
+    (*original.item).x = 41;
+    testJsonRoundTrip(original, "{item:{x:41}}" );
 }
 
 TEST(JsonElementConverterTest, VariantUsesElementConverter) {

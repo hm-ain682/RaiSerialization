@@ -61,7 +61,7 @@ concept IsDefaultMatchFieldOmitBehaviorAllowed = std::is_copy_constructible_v<Va
     && (!IsContainer<Value>
         || (std::is_copy_constructible_v<std::remove_cvref_t<std::ranges::range_value_t<Value>>>
             && std::is_copy_assignable_v<std::remove_cvref_t<std::ranges::range_value_t<Value>>>))
-    && (!IsUniquePtr<Value>);
+    && (!IsPointerLike<Value>);
 
 /// @brief 読み込み時省略では既定値を設定し、書き出し時既定値と一致するならスキップする省略時挙動。
 /// @tparam Value 値型

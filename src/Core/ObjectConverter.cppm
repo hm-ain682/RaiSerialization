@@ -439,36 +439,111 @@ constexpr auto getEnumConverter(std::span<const EnumEntry<Enum>, N> entries) {
     return EnumConverter<EnumTextMap<Enum, N>>(map);
 }
 
-// ******************************************************************************** unique_ptr用変換方法
+// ******************************************************************************** pointer用変換方法
 
-/// @brief std::unique_ptr を判定する concept（element_type / deleter_type を確認し正確に判定）。
-/// @tparam T 判定対象の型。
+/// @brief pointer-like 型から参照先の要素型を取り出す。
+template <typename T, typename = void>
+struct PointerElementType {};
+
 template <typename T>
-concept IsUniquePtr = requires {
-    typename T::element_type;
-    typename T::deleter_type;
-} && std::is_same_v<T, std::unique_ptr<typename T::element_type, typename T::deleter_type>>;
+struct PointerElementType<
+    T,
+    std::void_t<typename std::pointer_traits<std::remove_cvref_t<T>>::element_type>> {
+    using type = std::remove_cv_t<
+        typename std::pointer_traits<std::remove_cvref_t<T>>::element_type>;
+};
 
-/// @brief unique_ptr 等のコンバータ
-template <typename T, typename TargetConverter>
-struct UniquePtrConverter {
+/// @brief pointer-like 型から実ポインタを取得する。
+/// @details smart pointer 風の型は get() を使い、生ポインタはそのまま返す。
+template <typename T>
+constexpr auto getRawPointer(T& pointer) {
+    if constexpr (std::is_pointer_v<std::remove_cvref_t<T>>) {
+        return pointer;
+    }
+    else {
+        return pointer.get();
+    }
+}
+
+/// @brief get() で実ポインタを取り出せる pointer-like 型かどうかを判定する。
+/// @details 生ポインタは get() を持たないため、getRawPointer() 内で直接扱う。
+template <typename T>
+concept HasGetRawPointer = requires(T& pointer, const T& constPointer) {
+    typename PointerElementType<T>::type;
+    { getRawPointer(pointer) } -> std::convertible_to<typename PointerElementType<T>::type*>;
+    { getRawPointer(constPointer) } -> std::convertible_to<typename PointerElementType<T>::type*>;
+};
+
+/// @brief null を表せて参照先を読み書きできる pointer-like 型かどうかを判定する。
+template <typename T>
+concept IsPointerLike = HasGetRawPointer<T>
+    && std::constructible_from<T, std::nullptr_t>
+    && requires(const T& pointer) {
+        typename PointerElementType<T>::type;
+        { pointer == nullptr } -> std::convertible_to<bool>;
+        { pointer != nullptr } -> std::convertible_to<bool>;
+        { *pointer } -> std::convertible_to<const typename PointerElementType<T>::type&>;
+    };
+
+/// @brief PointerConverter の既定生成方法。
+/// @details unique_ptr/shared_ptr は標準の生成関数を使い、それ以外は Element* から
+///          Ptr を構築できる場合だけ new Element(...) を渡す。
+template <typename Ptr>
+struct DefaultPointerFactory {
+    using Element = typename PointerElementType<Ptr>::type;
+
+    Ptr operator()(Element&& value) const
+        requires std::constructible_from<Ptr, Element*>
+    {
+        return Ptr(new Element(std::move(value)));
+    }
+};
+
+template <typename T, typename Deleter>
+struct DefaultPointerFactory<std::unique_ptr<T, Deleter>> {
+    std::unique_ptr<T, Deleter> operator()(T&& value) const
+        requires std::default_initializable<Deleter>
+    {
+        return std::unique_ptr<T, Deleter>(
+            new T(std::move(value)), Deleter{});
+    }
+};
+
+template <typename T>
+struct DefaultPointerFactory<std::shared_ptr<T>> {
+    std::shared_ptr<T> operator()(T&& value) const {
+        return std::make_shared<T>(std::move(value));
+    }
+};
+
+/// @brief nullable pointer-like 型のコンバータ。
+template <
+    typename T,
+    typename TargetConverter,
+    typename PointerFactory = DefaultPointerFactory<T>>
+struct PointerConverter {
     using Value = T;
-    using Element = typename T::element_type;
+    using Element = typename PointerElementType<T>::type;
     using ElemConvT = std::remove_cvref_t<TargetConverter>;
-    static_assert(IsUniquePtr<T>, "UniquePtrConverter requires T to be a unique_ptr-like type");
+    using FactoryT = std::remove_cvref_t<PointerFactory>;
+    static_assert(IsPointerLike<T>, "PointerConverter requires T to be a nullable pointer-like type");
     static_assert(IsObjectConverter<ElemConvT, Element>,
-        "UniquePtrConverter requires ElementConverter to be an ObjectConverter for element type");
+        "PointerConverter requires ElementConverter to be an ObjectConverter for element type");
+    static_assert(requires(const FactoryT& factory, Element&& element) {
+        { factory(std::move(element)) } -> std::same_as<T>;
+    }, "PointerConverter requires PointerFactory to create T from Element&&");
 
-    // デフォルトコンストラクタはデフォルト要素コンバータへの参照を初期化子リストで設定する
-    UniquePtrConverter()
-        : targetConverter_(std::cref(getConverter<Element>())) {}
+    PointerConverter()
+        : targetConverter_(std::cref(getConverter<Element>())), pointerFactory_{} {}
 
-    // 明示的に要素コンバータ参照を指定するオーバーロード
-    constexpr explicit UniquePtrConverter(const ElemConvT& conv)
-        : targetConverter_(std::cref(conv)) {}
+    constexpr explicit PointerConverter(const ElemConvT& conv)
+        : targetConverter_(std::cref(conv)), pointerFactory_{} {}
+
+    constexpr PointerConverter(const ElemConvT& conv, FactoryT factory)
+        : targetConverter_(std::cref(conv)), pointerFactory_(std::move(factory)) {}
 
     void write(JsonWriter& writer, const T& ptr) const {
-        if (!ptr) {
+        if (ptr == nullptr) {
             writer.null();
             return;
         }
@@ -481,28 +556,34 @@ struct UniquePtrConverter {
             return nullptr;
         }
         auto elem = targetConverter_.get().read(parser);
-        return std::make_unique<Element>(std::move(elem));
+        return pointerFactory_(std::move(elem));
     }
 
 private:
     std::reference_wrapper<const ElemConvT> targetConverter_;
+    FactoryT pointerFactory_;
 };
 
-/// @brief unique_ptr<T>のjson変換方法を返す。※インスタンスはstatic。
-/// @tparam T 参照先がgetConverterの対象であるunique_ptr型
+/// @brief pointer-like 型のjson変換方法を返す。※インスタンスはstatic。
 template <typename T>
-constexpr auto& getUniquePtrConverter() {
-    using TargetConverter = decltype(getConverter<typename T::element_type>());
-    static const UniquePtrConverter<T, TargetConverter> inst{};
+constexpr auto& getPointerConverter() {
+    using TargetConverter = decltype(getConverter<typename PointerElementType<T>::type>());
+    static const PointerConverter<T, TargetConverter> inst{};
     return inst;
 }
 
-/// @brief 参照先の変換方法を指定して unique_ptr<T> のjson変換方法を返す。
-/// @tparam T unique_ptr型
-/// @param elementConverter 参照先の変換方法
+/// @brief 参照先の変換方法を指定して pointer-like 型のjson変換方法を返す。
 template <typename T, typename ElementConverter>
-constexpr auto getUniquePtrConverter(const ElementConverter& elementConverter) {
-    return UniquePtrConverter<T, ElementConverter>(elementConverter);
+constexpr auto getPointerConverter(const ElementConverter& elementConverter) {
+    return PointerConverter<T, ElementConverter>(elementConverter);
+}
+
+/// @brief 参照先の変換方法とポインタ生成方法を指定して pointer-like 型のjson変換方法を返す。
+template <typename T, typename ElementConverter, typename PointerFactory>
+constexpr auto getPointerConverter(
+    const ElementConverter& elementConverter, PointerFactory pointerFactory) {
+    return PointerConverter<T, ElementConverter, PointerFactory>(
+        elementConverter, std::move(pointerFactory));
 }
 
 // ******************************************************************************** トークン種別毎の分岐用

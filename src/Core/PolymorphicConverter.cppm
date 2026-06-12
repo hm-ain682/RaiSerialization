@@ -35,60 +35,15 @@ namespace rai::serialization {
 
 // ------------------------- Polymorphic helpers and fields -------------------------
 
-/// @brief pointer-like 型から参照先の要素型を取り出す。
-/// @details raw pointer と標準 smart pointer に加え、std::pointer_traits<P>::element_type
-///          を提供する独自 pointer-like 型も同じ経路で扱う。
-template <typename T>
-struct PointerElementType {
-    using type = std::remove_cv_t<
-        typename std::pointer_traits<std::remove_cvref_t<T>>::element_type>;
-};
-
-/// @brief pointer-like 型から実ポインタを取得する。
-/// @details smart pointer 風の型は get() を使い、生ポインタはそのまま返す。
-template <typename T>
-constexpr auto getRawPointer(T& pointer) {
-    if constexpr (std::is_pointer_v<std::remove_cvref_t<T>>) {
-        return pointer;
-    }
-    else {
-        return pointer.get();
-    }
-}
-
-/// @brief get() で実ポインタを取り出せる pointer-like 型かどうかを判定する。
-/// @details 生ポインタは get() を持たないため、getRawPointer() 内で直接扱う。
-template <typename T>
-concept HasGetPointer = requires(T& pointer, const T& constPointer) {
-    typename PointerElementType<T>::type;
-    { getRawPointer(pointer) } -> std::convertible_to<typename PointerElementType<T>::type*>;
-    { getRawPointer(constPointer) } -> std::convertible_to<typename PointerElementType<T>::type*>;
-};
-
-/// @brief PolymorphicConverter が扱える nullable pointer-like 型かどうかを確認する concept。
-/// @details 必要な操作は、null の読み書き用の nullptr 構築/比較、書き込み時の !p、
-///          型判別用の *p、読み書き用 raw pointer を得る p.get()。
-///          生ポインタだけは get() を持たないため、そのまま raw pointer として扱う。
-template <typename T>
-concept IsSmartOrRawPointer = HasGetPointer<T>
-    && std::constructible_from<T, std::nullptr_t>
-    && requires(T& pointer, const T& constPointer) {
-        typename PointerElementType<T>::type;
-        { !constPointer } -> std::convertible_to<bool>;
-        { constPointer == nullptr } -> std::convertible_to<bool>;
-        { constPointer != nullptr } -> std::convertible_to<bool>;
-        { *constPointer } -> std::convertible_to<const typename PointerElementType<T>::type&>;
-    };
-
 /// @brief ポリモーフィック型用のファクトリ関数型（ポインタ型を返す）。
 export template <typename Ptr>
-    requires IsSmartOrRawPointer<Ptr>
+    requires IsPointerLike<Ptr>
 using PolymorphicTypeFactory = std::function<Ptr()>;
 
 /// @brief serializer() を持たないポリモーフィック型を外部 ObjectSerializer で扱うための登録情報。
 /// @details type は書き込み時に実際の派生型から型タグを逆引きするために使う。
 export template <typename Ptr>
-    requires IsSmartOrRawPointer<Ptr>
+    requires IsPointerLike<Ptr>
 struct PolymorphicSerializerEntry {
     using Factory = PolymorphicTypeFactory<Ptr>;
 
@@ -104,7 +59,7 @@ struct PolymorphicSerializerEntry {
 /// @param jsonKey 型判別用のJSONキー名。
 /// @return 読み取ったオブジェクトのポインタ。または型キーが見つからない／未知の型名の場合はnullptr。
 export template <typename Ptr, typename EntryValue = PolymorphicTypeFactory<Ptr>>
-    requires IsSmartOrRawPointer<Ptr>
+    requires IsPointerLike<Ptr>
 Ptr readPolymorphicInstance(JsonParser& parser,
     const collection::MapReference<std::string_view, EntryValue>& entriesMap,
     std::string_view jsonKey) {
@@ -166,7 +121,7 @@ Ptr readPolymorphicInstance(JsonParser& parser,
 
 /// @brief ポリモーフィックオブジェクト1つ分を読み取るヘルパー関数（null許容版）。
 export template <typename Ptr, typename EntryValue = PolymorphicTypeFactory<Ptr>>
-    requires IsSmartOrRawPointer<Ptr>
+    requires IsPointerLike<Ptr>
 Ptr readPolymorphicInstanceOrNull(JsonParser& parser,
     const collection::MapReference<std::string_view, EntryValue>& entriesMap,
     std::string_view jsonKey) {
@@ -212,7 +167,7 @@ std::string getTypeNameFromMap(const BaseType& obj,
 
 // PolymorphicConverter: ポインタ型（unique_ptr/shared_ptr/生ポインタ）に対して IsObjectConverter を満たすコンバータ
 export template <typename Ptr, typename EntryValue = PolymorphicTypeFactory<Ptr>>
-    requires IsSmartOrRawPointer<Ptr>
+    requires IsPointerLike<Ptr>
 struct PolymorphicConverter {
     using Value = Ptr;
     using Element = typename PointerElementType<std::remove_cvref_t<Value>>::type;
@@ -235,7 +190,7 @@ struct PolymorphicConverter {
     }
 
     void write(JsonWriter& writer, const Ptr& ptr) const {
-        if (!ptr) {
+        if (ptr == nullptr) {
             writer.null();
             return;
         }
@@ -281,7 +236,7 @@ private:
 /// @param jsonKey 型判別用のJSONキー名
 /// @param allowNull null許容かどうか
 export template <typename Ptr, typename Map>
-    requires IsSmartOrRawPointer<Ptr>
+    requires IsPointerLike<Ptr>
 constexpr auto getPolymorphicConverter(
     const Map& entries, const char* jsonKey = "type", bool allowNull = true) {
     return PolymorphicConverter<Ptr>(entries, jsonKey, allowNull);
@@ -293,7 +248,7 @@ constexpr auto getPolymorphicConverter(
 /// @param jsonKey 型判別用のJSONキー名
 /// @param allowNull null許容かどうか
 export template <typename Ptr, std::size_t N, typename Traits>
-    requires IsSmartOrRawPointer<Ptr>
+    requires IsPointerLike<Ptr>
 constexpr auto getPolymorphicConverter(
     const collection::SortedHashArrayMap<
         std::string_view, PolymorphicSerializerEntry<Ptr>, N, Traits>& entries,
@@ -309,7 +264,7 @@ constexpr auto getPolymorphicConverter(
 /// @param jsonKey 型判別用のJSONキー名
 /// @param allowNull null許容かどうか
 export template <typename Ptr, typename Traits>
-    requires IsSmartOrRawPointer<Ptr>
+    requires IsPointerLike<Ptr>
 constexpr auto getPolymorphicConverter(
     const collection::MapReference<
         std::string_view, PolymorphicSerializerEntry<Ptr>, Traits>& entries,
@@ -326,7 +281,7 @@ constexpr auto getPolymorphicConverter(
 /// @param allowNull null許容かどうか
 export template <typename Container, typename Map>
     requires IsContainer<Container>
-    && IsSmartOrRawPointer<std::remove_cvref_t<std::ranges::range_value_t<Container>>>
+    && IsPointerLike<std::remove_cvref_t<std::ranges::range_value_t<Container>>>
 constexpr auto getPolymorphicArrayConverter(
     const Map& entries, const char* jsonKey = "type", bool allowNull = true) {
     using ElementPtr = std::remove_cvref_t<std::ranges::range_value_t<Container>>;
@@ -343,7 +298,7 @@ constexpr auto getPolymorphicArrayConverter(
 /// @param allowNull null許容かどうか
 export template <typename Container, std::size_t N, typename Traits>
     requires IsContainer<Container>
-    && IsSmartOrRawPointer<std::remove_cvref_t<std::ranges::range_value_t<Container>>>
+    && IsPointerLike<std::remove_cvref_t<std::ranges::range_value_t<Container>>>
 constexpr auto getPolymorphicArrayConverter(
     const collection::SortedHashArrayMap<
         std::string_view,
@@ -365,7 +320,7 @@ constexpr auto getPolymorphicArrayConverter(
 /// @param allowNull null許容かどうか
 export template <typename Container, typename Traits>
     requires IsContainer<Container>
-    && IsSmartOrRawPointer<std::remove_cvref_t<std::ranges::range_value_t<Container>>>
+    && IsPointerLike<std::remove_cvref_t<std::ranges::range_value_t<Container>>>
 constexpr auto getPolymorphicArrayConverter(
     const collection::MapReference<
         std::string_view,

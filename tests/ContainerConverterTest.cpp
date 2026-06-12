@@ -304,9 +304,9 @@ struct PointerHolder {
     const ObjectSerializer& serializer() const {
             // Provide explicit element/container converter for vector of unique_ptr<string>
             using Element = std::unique_ptr<std::string>;
-            auto& elementConverter = getUniquePtrConverter<Element>();
+            auto& elementConverter = getPointerConverter<Element>();
             static const auto uniquePtrConverter =
-                getUniquePtrConverter<decltype(ptr)>();
+                getPointerConverter<decltype(ptr)>();
             static const auto containerConverter =
                 getContainerConverter<decltype(ptrVec)>(elementConverter);
             static const auto fields = getFieldSet(
