@@ -39,7 +39,7 @@ namespace rai::serialization {
 /// @details JsonParser を受け取るため、factory 内で parser.context<T>() などの読み込み時状態を参照できる。
 export template <typename Ptr>
     requires IsPointerLike<Ptr>
-using PolymorphicTypeFactory = std::function<Ptr(JsonParser*)>;
+using PolymorphicTypeFactory = std::function<Ptr(JsonParser&)>;
 
 /// @brief serializer() を公開するポリモーフィック型の登録エントリ。
 /// @details typeName は JSON 上の型名、type は書き込み時の逆引き、factory は読み込み時の生成に使う。
@@ -78,7 +78,7 @@ struct PolymorphicSerializerEntry {
 /// @param factory JsonParser* を受け取りポインタ風の値を返す callable。
 export template <typename Concrete, typename Factory>
 auto makePolymorphicTypeEntry(std::string_view typeName, Factory&& factory) {
-    using Ptr = std::invoke_result_t<Factory&, JsonParser*>;
+    using Ptr = std::invoke_result_t<Factory&, JsonParser&>;
     return PolymorphicTypeEntry<Ptr>{
         typeName,
         std::type_index(typeid(Concrete)),
@@ -93,7 +93,7 @@ auto makePolymorphicTypeEntry(std::string_view typeName, Factory&& factory) {
 export template <typename Concrete, typename Factory>
 auto makePolymorphicSerializerEntry(std::string_view typeName, Factory&& factory,
     const ObjectSerializer& serializer) {
-    using Ptr = std::invoke_result_t<Factory&, JsonParser*>;
+    using Ptr = std::invoke_result_t<Factory&, JsonParser&>;
     return PolymorphicSerializerEntry<Ptr>{
         typeName,
         std::type_index(typeid(Concrete)),
@@ -179,7 +179,7 @@ Ptr readPolymorphicInstance(JsonParser& parser,
         return nullptr;
     }
 
-    auto instance = entry->factory(&parser);
+    auto instance = entry->factory(parser);
     using BaseType = typename PointerElementType<Ptr>::type;
     BaseType* raw = getRawPointer(instance);
 

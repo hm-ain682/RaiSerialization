@@ -404,11 +404,11 @@ struct Rectangle : public Shape {
 
 inline const auto shapeEntriesMap = std::array{
     rai::serialization::makePolymorphicTypeEntry<Circle>("Circle",
-        [](rai::serialization::JsonParser*) -> std::unique_ptr<Shape> {
+        [](rai::serialization::JsonParser&) -> std::unique_ptr<Shape> {
             return std::make_unique<Circle>();
         }),
     rai::serialization::makePolymorphicTypeEntry<Rectangle>("Rectangle",
-        [](rai::serialization::JsonParser*) -> std::unique_ptr<Shape> {
+        [](rai::serialization::JsonParser&) -> std::unique_ptr<Shape> {
             return std::make_unique<Rectangle>();
         })
 };
@@ -441,8 +441,8 @@ struct Drawing {
 >
 > ```cpp
 > rai::serialization::makePolymorphicTypeEntry<Circle>("PooledCircle",
->     [](rai::serialization::JsonParser* parser) -> std::unique_ptr<Shape> {
->         return parser->context<MyPool>()->makeCircle();
+>     [](rai::serialization::JsonParser& parser) -> std::unique_ptr<Shape> {
+>         return parser.context<MyPool>()->makeCircle();
 >     })
 > ```
 
@@ -478,10 +478,10 @@ using ShapePtr = std::unique_ptr<Shape>;
 
 inline const auto shapeEntriesMap = std::array{
     rai::serialization::makePolymorphicSerializerEntry<Circle>("Circle",
-        [](rai::serialization::JsonParser*) -> ShapePtr { return std::make_unique<Circle>(); },
+        [](rai::serialization::JsonParser&) -> ShapePtr { return std::make_unique<Circle>(); },
         circleFields),
     rai::serialization::makePolymorphicSerializerEntry<Rectangle>("Rectangle",
-        [](rai::serialization::JsonParser*) -> ShapePtr { return std::make_unique<Rectangle>(); },
+        [](rai::serialization::JsonParser&) -> ShapePtr { return std::make_unique<Rectangle>(); },
         rectangleFields)
 };
 ```

@@ -146,16 +146,16 @@ struct PFromFactoryContext : public PB {
 // entries を直接マップ構築（配列を経由せず簡潔に記述）
 inline const auto pbEntriesMap = std::array{
     makePolymorphicTypeEntry<POne>("One",
-        [](JsonParser*) -> std::unique_ptr<PB> { return std::make_unique<POne>(); }),
+        [](JsonParser&) -> std::unique_ptr<PB> { return std::make_unique<POne>(); }),
     makePolymorphicTypeEntry<PTwo>("Two",
-        [](JsonParser*) -> std::unique_ptr<PB> { return std::make_unique<PTwo>(); })
+        [](JsonParser&) -> std::unique_ptr<PB> { return std::make_unique<PTwo>(); })
 };
 
 inline const auto contextFactoryEntriesMap = std::array{
     makePolymorphicTypeEntry<PFromFactoryContext>("FromContext",
-    [](JsonParser* parser) -> std::unique_ptr<PB> {
+    [](JsonParser& parser) -> std::unique_ptr<PB> {
         auto instance = std::make_unique<PFromFactoryContext>();
-        instance->seeded = parser->context<PolymorphicFactorySeed>()->value;
+        instance->seeded = parser.context<PolymorphicFactorySeed>()->value;
         return instance;
     })
 };
@@ -266,9 +266,9 @@ private:
 using NonStdPBPtr = NonStdOwningPtr<PB>;
 inline const auto nonStdPbEntriesMap = std::array{
     makePolymorphicTypeEntry<POne>("One",
-        [](JsonParser*) { return NonStdPBPtr(new POne()); }),
+        [](JsonParser&) { return NonStdPBPtr(new POne()); }),
     makePolymorphicTypeEntry<PTwo>("Two",
-        [](JsonParser*) { return NonStdPBPtr(new PTwo()); })
+        [](JsonParser&) { return NonStdPBPtr(new PTwo()); })
 };
 
 struct NonStdPtrHolder {
@@ -329,10 +329,10 @@ inline const auto externalTwoFields = getFieldSet(
 using ExternalPtr = std::unique_ptr<ExternalPB>;
 inline const auto externalEntriesMap = std::array{
     makePolymorphicSerializerEntry<ExternalOne>("One",
-        [](JsonParser*) -> ExternalPtr { return std::make_unique<ExternalOne>(); },
+        [](JsonParser&) -> ExternalPtr { return std::make_unique<ExternalOne>(); },
         externalOneFields),
     makePolymorphicSerializerEntry<ExternalTwo>("Two",
-        [](JsonParser*) -> ExternalPtr { return std::make_unique<ExternalTwo>(); },
+        [](JsonParser&) -> ExternalPtr { return std::make_unique<ExternalTwo>(); },
         externalTwoFields)
 };
 

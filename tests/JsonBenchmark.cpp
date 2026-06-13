@@ -126,9 +126,9 @@ using BaseNodePtr = std::unique_ptr<BaseNode>;
 // ポリモーフィック型エントリマップ（makeSortedHashArrayMapを使用）
 inline const auto baseNodeEntriesMap = std::array{
     makePolymorphicTypeEntry<DataNode>(std::string_view("DataNode"),
-        [](JsonParser*) -> BaseNodePtr { return std::make_unique<DataNode>(); }),
+        [](JsonParser&) -> BaseNodePtr { return std::make_unique<DataNode>(); }),
     makePolymorphicTypeEntry<ContainerNode>(std::string_view("ContainerNode"),
-        [](JsonParser*) -> BaseNodePtr { return std::make_unique<ContainerNode>(); })
+        [](JsonParser&) -> BaseNodePtr { return std::make_unique<ContainerNode>(); })
 };
 
 

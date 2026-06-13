@@ -499,11 +499,11 @@ struct MapPolymorphicTwo : MapPolymorphicBase {
 using MapPolymorphicPtr = std::unique_ptr<MapPolymorphicBase>;
 inline const auto mapPolymorphicEntries = std::array{
     makePolymorphicTypeEntry<MapPolymorphicOne>("One",
-        [](JsonParser*) -> MapPolymorphicPtr {
+        [](JsonParser&) -> MapPolymorphicPtr {
             return std::make_unique<MapPolymorphicOne>();
         }),
     makePolymorphicTypeEntry<MapPolymorphicTwo>("Two",
-        [](JsonParser*) -> MapPolymorphicPtr {
+        [](JsonParser&) -> MapPolymorphicPtr {
             return std::make_unique<MapPolymorphicTwo>();
         })
 };
