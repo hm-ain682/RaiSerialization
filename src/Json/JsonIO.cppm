@@ -4,7 +4,7 @@
 module;
 #include <cassert>
 #include <string>
-#include <vector>
+#include <string_view>
 #include <fstream>
 #include <filesystem>
 #include <sstream>
@@ -139,17 +139,32 @@ void readJsonObject(JsonParser& parser, typename Converter::Value& obj,
     converter.read(parser, obj);
 }
 
-/// @brief 文字列バッファからオブジェクトを読み込む（コア関数）。
+/// @brief 文字列バッファからオブジェクトを読み込む（内部実装）。
 /// @tparam T 読み込み対象の型。
-/// @tparam Provider シリアライザー提供者の型。
-/// @param buffer 入力バッファ（ReadingAheadBuffer用の先読み領域を含む容量が必要）。
+/// @param buffer 入力バッファ。ReadingAheadBuffer 用の先読み領域を追加できる容量を持つ。
 /// @param out 読み込み先のオブジェクト。
-/// @param unknownKeysOut 未知キーの収集先。
-/// @param context FormatReaderに持たせる呼び出し側定義の任意のオブジェクト。省略可。
+/// @param issueSink 未知キーや回復可能エラーの通知先。
+/// @param context FormatReader に持たせる呼び出し側定義の任意のオブジェクト。省略可。
 template <typename T, typename... Context>
     requires (sizeof...(Context) <= 1)
 void readJsonFromBuffer(std::string&& buffer, T& out,
-    std::vector<std::string>& unknownKeysOut, Context&... context) {
+    FormatIssueSink& issueSink, Context&... context) {
+    ReadingAheadBuffer inputSource(std::move(buffer), aheadSize);
+    TokenManager tokenManager;
+    StdoutMessageOutput warningOutput;
+    JsonTokenizer<ReadingAheadBuffer, TokenManager> tokenizer(
+        inputSource, tokenManager, warningOutput);
+    tokenizer.tokenize();
+
+    JsonParser parser(tokenManager, FormatContext{context...}, issueSink);
+    readJsonObject(parser, out);
+}
+
+/// @brief Sink を明示しない読み込み経路。
+/// @details 既定 Sink により未知キーは無視し、回復可能エラーは例外にする。
+template <typename T, typename... Context>
+    requires (sizeof...(Context) <= 1)
+void readJsonFromBufferIgnoringIssues(std::string&& buffer, T& out, Context&... context) {
     ReadingAheadBuffer inputSource(std::move(buffer), aheadSize);
     TokenManager tokenManager;
     StdoutMessageOutput warningOutput;
@@ -159,18 +174,22 @@ void readJsonFromBuffer(std::string&& buffer, T& out,
 
     JsonParser parser(tokenManager, FormatContext{context...});
     readJsonObject(parser, out);
-    unknownKeysOut = std::move(parser.getUnknownKeys());
 }
 
+/// @brief 入力ストリームを読み込んで JSON として変換する（Sink 指定版）。
+/// @param inputStream 入力元ストリーム。
+/// @param out 読み込み先のオブジェクト。
+/// @param issueSink 未知キーや回復可能エラーの通知先。
+/// @param context FormatReader に持たせる呼び出し側定義の任意のオブジェクト。省略可。
 template <typename T, typename... Context>
     requires (sizeof...(Context) <= 1)
 void readJsonImpl(std::istream& inputStream, T& out,
-    std::vector<std::string>& unknownKeysOut, Context&... context) {
-    // ストリームから文字列に読み込み
+    FormatIssueSink& issueSink, Context&... context) {
+    // ストリームから文字列に読み込む。
     std::ostringstream oss;
     oss << inputStream.rdbuf();
 
-    // 読み込み失敗をチェック
+    // 読み込み失敗をチェックする。
     if (inputStream.fail() && !inputStream.eof()) {
         throw std::runtime_error("readJsonImpl: Failed to read from input stream");
     }
@@ -178,41 +197,50 @@ void readJsonImpl(std::istream& inputStream, T& out,
     std::string buffer = oss.str();
     buffer.reserve(buffer.size() + aheadSize);
 
-    readJsonFromBuffer(std::move(buffer), out, unknownKeysOut, context...);
+    readJsonFromBuffer(std::move(buffer), out, issueSink, context...);
 }
 
-// 未知キーの収集先を受け取るオーバーロード（先に定義）
+/// @brief JSON 文字列からオブジェクトを読み込む（Sink 指定版）。
+/// @tparam T 読み込み対象の型。
+/// @param jsonText JSON 形式の文字列。
+/// @param out 読み込み先のオブジェクト。
+/// @param issueSink 未知キーや回復可能エラーの通知先。
+/// @param context FormatReader に持たせる呼び出し側定義の任意のオブジェクト。省略可。
 export template <typename T, typename... Context>
     requires (!HasSerializer<T>) && (sizeof...(Context) <= 1)
 void readJsonString(const std::string& jsonText, T& out,
-    std::vector<std::string>& unknownKeysOut, Context&... context) {
+    FormatIssueSink& issueSink, Context&... context) {
     std::istringstream stream(jsonText);
-    readJsonImpl(stream, out, unknownKeysOut, context...);
+    readJsonImpl(stream, out, issueSink, context...);
 }
 
-// 未知キーの収集先を受け取るオーバーロード（既定フォーマット版）
+/// @brief JSON 文字列からオブジェクトを読み込む（Sink 指定版、既定 serializer 形式）。
+/// @tparam T 読み込み対象の型。
+/// @param jsonText JSON 形式の文字列。
+/// @param out 読み込み先のオブジェクト。
+/// @param issueSink 未知キーや回復可能エラーの通知先。
+/// @param context FormatReader に持たせる呼び出し側定義の任意のオブジェクト。省略可。
 export template <HasSerializer T, typename... Context>
     requires (sizeof...(Context) <= 1)
 void readJsonString(const std::string& jsonText, T& out,
-    std::vector<std::string>& unknownKeysOut, Context&... context) {
+    FormatIssueSink& issueSink, Context&... context) {
     std::string buffer = jsonText;
     buffer.reserve(buffer.size() + aheadSize);
-    readJsonFromBuffer(std::move(buffer), out, unknownKeysOut, context...);
+    readJsonFromBuffer(std::move(buffer), out, issueSink, context...);
 }
 
-/// @brief Converter を使って JSON 文字列からオブジェクトを読み込む。
+/// @brief Converter を使って JSON 文字列からオブジェクトを読み込む（Sink 指定版）。
 /// @tparam Converter 変換器型。
-/// @param jsonText JSON形式の文字列。
+/// @param jsonText JSON 形式の文字列。
 /// @param out 読み込み先のオブジェクト。
-/// @param unknownKeysOut 未知キーの収集先。
+/// @param issueSink 未知キーや回復可能エラーの通知先。
 /// @param converter 値変換器。
-/// @param context FormatReaderに持たせる呼び出し側定義の任意のオブジェクト。省略可。
+/// @param context FormatReader に持たせる呼び出し側定義の任意のオブジェクト。省略可。
 export template <typename Converter, typename... Context>
 requires IsObjectConverter<Converter, typename Converter::Value>
     && (sizeof...(Context) <= 1)
 void readJsonString(const std::string& jsonText, typename Converter::Value& out,
-    std::vector<std::string>& unknownKeysOut, const Converter& converter,
-    Context&... context) {
+    FormatIssueSink& issueSink, const Converter& converter, Context&... context) {
     std::string buffer = jsonText;
     buffer.reserve(buffer.size() + aheadSize);
 
@@ -223,9 +251,8 @@ void readJsonString(const std::string& jsonText, typename Converter::Value& out,
         inputSource, tokenManager, warningOutput);
     tokenizer.tokenize();
 
-    JsonParser parser(tokenManager, FormatContext{context...});
+    JsonParser parser(tokenManager, FormatContext{context...}, issueSink);
     converter.read(parser, out);
-    unknownKeysOut = std::move(parser.getUnknownKeys());
 }
 
 /// @brief Converter を使って JSON 文字列からオブジェクトを読み込む。
@@ -239,8 +266,18 @@ requires IsObjectConverter<Converter, typename Converter::Value>
     && (sizeof...(Context) <= 1)
 void readJsonString(const std::string& jsonText, typename Converter::Value& out,
     const Converter& converter, Context&... context) {
-    std::vector<std::string> unknownKeysOut;
-    readJsonString(jsonText, out, unknownKeysOut, converter, context...);
+    std::string buffer = jsonText;
+    buffer.reserve(buffer.size() + aheadSize);
+
+    ReadingAheadBuffer inputSource(std::move(buffer), aheadSize);
+    TokenManager tokenManager;
+    StdoutMessageOutput warningOutput;
+    JsonTokenizer<ReadingAheadBuffer, TokenManager> tokenizer(
+        inputSource, tokenManager, warningOutput);
+    tokenizer.tokenize();
+
+    JsonParser parser(tokenManager, FormatContext{context...});
+    converter.read(parser, out);
 }
 
 /// @brief JSON文字列からオブジェクトを読み込む。
@@ -249,8 +286,9 @@ void readJsonString(const std::string& jsonText, typename Converter::Value& out,
 /// @param out 読み込み先のオブジェクト。
 export template <HasSerializer T>
 void readJsonString(const std::string& jsonText, T& out) {
-    std::vector<std::string> unknownKeysOut;
-    readJsonString(jsonText, out, unknownKeysOut);
+    std::string buffer = jsonText;
+    buffer.reserve(buffer.size() + aheadSize);
+    readJsonFromBufferIgnoringIssues(std::move(buffer), out);
 }
 
 /// @brief JSONファイルからオブジェクトを読み込む（逐次処理版、内部実装）。
@@ -260,12 +298,12 @@ void readJsonString(const std::string& jsonText, T& out) {
 /// @param filename エラーメッセージ用のファイル名。
 /// @param out 読み込み先のオブジェクト。
 /// @param fileSize ファイルサイズ。
-/// @param unknownKeysOut 未知キーの収集先。
+/// @param issueSink 未知キーの収集先。
 /// @param context FormatReaderに持たせる呼び出し側定義の任意のオブジェクト。省略可。
 template <typename T, typename... Context>
     requires (sizeof...(Context) <= 1)
 void readJsonFileSequentialImpl(std::ifstream& ifs, const std::string& filename, T& out,
-    std::streamsize fileSize, std::vector<std::string>& unknownKeysOut,
+    std::streamsize fileSize, FormatIssueSink& issueSink,
     Context&... context) {
     // どうしてこの実装にしたか：ファイルを一括読み込みしてからトークン化する方が、
     // 小〜中規模ファイルではスレッド同期オーバーヘッドを回避できるため高速
@@ -280,7 +318,26 @@ void readJsonFileSequentialImpl(std::ifstream& ifs, const std::string& filename,
     }
     buffer.resize(bytesRead);
 
-    readJsonFromBuffer(std::move(buffer), out, unknownKeysOut, context...);
+    readJsonFromBuffer(std::move(buffer), out, issueSink, context...);
+}
+
+// issueSink を持たない逐次読み込みの内部実装。未知キーは既定 Sink で無視する。
+template <typename T, typename... Context>
+    requires (sizeof...(Context) <= 1)
+void readJsonFileSequentialImpl(std::ifstream& ifs, const std::string& filename, T& out,
+    std::streamsize fileSize, Context&... context) {
+    std::string buffer;
+    buffer.reserve(fileSize + aheadSize);
+    buffer.resize(fileSize);
+    ifs.read(buffer.data(), buffer.capacity());
+    auto bytesRead = ifs.gcount();
+    assert(bytesRead <= static_cast<std::streamsize>(buffer.size()));
+    if (ifs.bad()) {
+        throw std::runtime_error("readJsonFileSequential: Error reading from file " + filename);
+    }
+    buffer.resize(bytesRead);
+
+    readJsonFromBufferIgnoringIssues(std::move(buffer), out, context...);
 }
 
 /// @brief JSONファイルからオブジェクトを読み込む（逐次処理版）。
@@ -288,18 +345,31 @@ void readJsonFileSequentialImpl(std::ifstream& ifs, const std::string& filename,
 /// @param filename 入力元のファイル名。
 /// @param out 読み込み先のオブジェクト。
 /// @param fileSize ファイルサイズ。
-/// @param unknownKeysOut 未知キーの収集先。
+/// @param issueSink 未知キーの収集先。
 /// @param context FormatReaderに持たせる呼び出し側定義の任意のオブジェクト。省略可。
 export template <typename T, typename... Context>
     requires (sizeof...(Context) <= 1)
 void readJsonFileSequentialCore(const std::string& filename, T& out, std::streamsize fileSize,
-    std::vector<std::string>& unknownKeysOut, Context&... context) {
+    FormatIssueSink& issueSink, Context&... context) {
     std::ifstream ifs(filename, std::ios::binary);
     if (!ifs.is_open()) {
         throw std::runtime_error("readJsonFile: Cannot open file " + filename);
     }
     readJsonFileSequentialImpl(
-        ifs, filename, out, fileSize, unknownKeysOut, context...);
+        ifs, filename, out, fileSize, issueSink, context...);
+    ifs.close();
+}
+
+// issueSink を持たない逐次読み込みの共通入口。
+template <typename T, typename... Context>
+    requires (sizeof...(Context) <= 1)
+void readJsonFileSequentialCore(const std::string& filename, T& out, std::streamsize fileSize,
+    Context&... context) {
+    std::ifstream ifs(filename, std::ios::binary);
+    if (!ifs.is_open()) {
+        throw std::runtime_error("readJsonFile: Cannot open file " + filename);
+    }
+    readJsonFileSequentialImpl(ifs, filename, out, fileSize, context...);
     ifs.close();
 }
 
@@ -308,14 +378,14 @@ void readJsonFileSequentialCore(const std::string& filename, T& out, std::stream
 /// @tparam T 読み込み対象の型。
 /// @param filename 入力元のファイル名。
 /// @param out 読み込み先のオブジェクト。
-/// @param unknownKeysOut 未知キーの収集先。
+/// @param issueSink 未知キーの収集先。
 /// @param context FormatReaderに持たせる呼び出し側定義の任意のオブジェクト。省略可。
 export template <HasSerializer T, typename... Context>
     requires (sizeof...(Context) <= 1)
 void readJsonFileSequential(const std::string& filename, T& out,
-    std::vector<std::string>& unknownKeysOut, Context&... context) {
+    FormatIssueSink& issueSink, Context&... context) {
     readJsonFileSequentialCore(
-        filename, out, std::filesystem::file_size(filename), unknownKeysOut, context...);
+        filename, out, std::filesystem::file_size(filename), issueSink, context...);
 }
 
 /// @brief JSONファイルからオブジェクトを読み込む（逐次処理版、簡易インターフェース）。
@@ -324,8 +394,7 @@ void readJsonFileSequential(const std::string& filename, T& out,
 /// @param out 読み込み先のオブジェクト。
 export template <HasSerializer T>
 void readJsonFileSequential(const std::string& filename, T& out) {
-    std::vector<std::string> unknownKeysOut;
-    readJsonFileSequential(filename, out, unknownKeysOut);
+    readJsonFileSequentialCore(filename, out, std::filesystem::file_size(filename));
 }
 
 /// @brief JSONファイルからオブジェクトを読み込む（逐次処理版、簡易インターフェース）。
@@ -337,8 +406,7 @@ void readJsonFileSequential(const std::string& filename, T& out) {
 export template <typename T>
 void readJsonFileSequential(
     const std::string& filename, T& out) {
-    std::vector<std::string> unknownKeysOut;
-    readJsonFileSequential(filename, out, unknownKeysOut);
+    readJsonFileSequentialCore(filename, out, std::filesystem::file_size(filename));
 }
 
 /// @brief JSONファイルからオブジェクトを読み込む（並列処理版、内部実装）。
@@ -347,12 +415,56 @@ void readJsonFileSequential(
 /// @param ifs 入力元のファイルストリーム（既にオープン済み）。
 /// @param filename エラーメッセージ用のファイル名。
 /// @param out 読み込み先のオブジェクト。
-/// @param unknownKeysOut 未知キーの収集先。
+/// @param issueSink 未知キーの収集先。
 /// @param context FormatReaderに持たせる呼び出し側定義の任意のオブジェクト。省略可。
 template <typename T, typename... Context>
     requires (sizeof...(Context) <= 1)
 void readJsonFileParallelImpl(std::ifstream& ifs, const std::string& filename, T& out,
-    std::vector<std::string>& unknownKeysOut, Context&... context) {
+    FormatIssueSink& issueSink, Context&... context) {
+    ParallelInputStreamSource inputSource(ifs);
+    TokenManager tokenManager;
+    StdoutMessageOutput warningOutput;
+    JsonTokenizer<ParallelInputStreamSource, TokenManager> tokenizer(
+        inputSource, tokenManager, warningOutput);
+
+    std::mutex tokenizerExceptionMutex;
+    std::exception_ptr tokenizerException;
+
+    auto& threadPool = rai::common::getGlobalThreadPool();
+    std::future<void> tokenizerFuture = threadPool.enqueue([&]() {
+        try {
+            tokenizer.tokenize();
+        } catch (...) {
+            auto ex = std::current_exception();
+            tokenManager.signalError(ex);
+            std::lock_guard<std::mutex> lock(tokenizerExceptionMutex);
+            tokenizerException = std::move(ex);
+        }
+    });
+
+    JsonParser parser(tokenManager, FormatContext{context...}, issueSink);
+
+    try {
+        readJsonObject(parser, out);
+    } catch (...) {
+        tokenizerFuture.wait();
+        throw;
+    }
+
+    tokenizerFuture.wait();
+    {
+        std::lock_guard<std::mutex> lock(tokenizerExceptionMutex);
+        if (tokenizerException) {
+            std::rethrow_exception(tokenizerException);
+        }
+    }
+}
+
+// issueSink を持たない並列読み込みの内部実装。未知キー収集用の Sink は差し込まない。
+template <typename T, typename... Context>
+    requires (sizeof...(Context) <= 1)
+void readJsonFileParallelImpl(std::ifstream& ifs, const std::string& filename, T& out,
+    Context&... context) {
     ParallelInputStreamSource inputSource(ifs);
     TokenManager tokenManager;
     StdoutMessageOutput warningOutput;
@@ -378,7 +490,6 @@ void readJsonFileParallelImpl(std::ifstream& ifs, const std::string& filename, T
 
     try {
         readJsonObject(parser, out);
-        unknownKeysOut = std::move(parser.getUnknownKeys());
     } catch (...) {
         tokenizerFuture.wait();
         throw;
@@ -398,18 +509,18 @@ void readJsonFileParallelImpl(std::ifstream& ifs, const std::string& filename, T
 /// @tparam Provider シリアライザー提供者の型。
 /// @param filename 入力元のファイル名。
 /// @param out 読み込み先のオブジェクト。
-/// @param unknownKeysOut 未知キーの収集先。
+/// @param issueSink 未知キーの収集先。
 /// @note この関数は常に並列処理を行います。小ファイルでも並列化のオーバーヘッドが発生します。
 /// @param context FormatReaderに持たせる呼び出し側定義の任意のオブジェクト。省略可。
 export template <typename T, typename... Context>
     requires (sizeof...(Context) <= 1)
 void readJsonFileParallel(const std::string& filename, T& out,
-    std::vector<std::string>& unknownKeysOut, Context&... context) {
+    FormatIssueSink& issueSink, Context&... context) {
     std::ifstream ifs(filename, std::ios::binary);
     if (!ifs.is_open()) {
         throw std::runtime_error("readJsonFile: Cannot open file " + filename);
     }
-    readJsonFileParallelImpl(ifs, filename, out, unknownKeysOut, context...);
+    readJsonFileParallelImpl(ifs, filename, out, issueSink, context...);
 }
 
 /// @brief JSONファイルからオブジェクトを読み込む（並列処理版、簡易インターフェース）。
@@ -418,8 +529,11 @@ void readJsonFileParallel(const std::string& filename, T& out,
 /// @param out 読み込み先のオブジェクト。
 export template <HasSerializer T>
 void readJsonFileParallel(const std::string& filename, T& out) {
-    std::vector<std::string> unknownKeysOut;
-    readJsonFileParallel(filename, out, unknownKeysOut);
+    std::ifstream ifs(filename, std::ios::binary);
+    if (!ifs.is_open()) {
+        throw std::runtime_error("readJsonFile: Cannot open file " + filename);
+    }
+    readJsonFileParallelImpl(ifs, filename, out);
 }
 
 
@@ -428,13 +542,13 @@ void readJsonFileParallel(const std::string& filename, T& out) {
 /// @tparam Provider シリアライザー提供者の型。
 /// @param filename 入力元のファイル名。
 /// @param out 読み込み先のオブジェクト。
-/// @param unknownKeysOut 未知キーの収集先。
+/// @param issueSink 未知キーの収集先。
 /// @note 小ファイル（10KB未満）では逐次処理、大ファイルでは並列処理を自動選択します。
 /// @param context FormatReaderに持たせる呼び出し側定義の任意のオブジェクト。省略可。
 export template <typename T, typename... Context>
     requires (sizeof...(Context) <= 1)
 void readJsonFile(const std::string& filename, T& out,
-    std::vector<std::string>& unknownKeysOut, Context&... context) {
+    FormatIssueSink& issueSink, Context&... context) {
     std::ifstream ifs(filename, std::ios::binary);
     if (!ifs.is_open()) {
         throw std::runtime_error("readJsonFile: Cannot open file " + filename);
@@ -450,10 +564,10 @@ void readJsonFile(const std::string& filename, T& out,
     if (fileSize <= smallFileThreshold) {
         // 小ファイルは逐次版を使用
         readJsonFileSequentialImpl(
-            ifs, filename, out, fileSize, unknownKeysOut, context...);
+            ifs, filename, out, fileSize, issueSink, context...);
     } else {
         // 大ファイルは並列版を使用
-        readJsonFileParallelImpl(ifs, filename, out, unknownKeysOut, context...);
+        readJsonFileParallelImpl(ifs, filename, out, issueSink, context...);
     }
 }
 
@@ -463,8 +577,20 @@ void readJsonFile(const std::string& filename, T& out,
 /// @param out 読み込み先のオブジェクト。
 export template <HasSerializer T>
 void readJsonFile(const std::string& filename, T& out) {
-    std::vector<std::string> unknownKeysOut;
-    readJsonFile(filename, out, unknownKeysOut);
+    std::ifstream ifs(filename, std::ios::binary);
+    if (!ifs.is_open()) {
+        throw std::runtime_error("readJsonFile: Cannot open file " + filename);
+    }
+
+    ifs.seekg(0, std::ios::end);
+    std::streamsize fileSize = ifs.tellg();
+    ifs.seekg(0, std::ios::beg);
+
+    if (fileSize <= smallFileThreshold) {
+        readJsonFileSequentialImpl(ifs, filename, out, fileSize);
+    } else {
+        readJsonFileParallelImpl(ifs, filename, out);
+    }
 }
 
 

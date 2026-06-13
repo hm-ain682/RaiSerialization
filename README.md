@@ -175,6 +175,11 @@ Notes:
 - Advanced read helpers can pass caller-owned state to converters as a trailing argument;
   retrieve it inside converters with `parser.context<State>()`. The context is a
   non-owning pointer; in debug builds the requested type is checked.
+- `JsonParser` reports non-JSON-specific read issues through `FormatIssueSink`.
+  Unknown keys are ignored by default. Pass a custom sink to `readJsonString` or
+  `readJsonFile` to collect unknown keys or emit warnings. Override
+  `recoverableError` and return `true` to continue after simple value mismatches;
+  returning `false` keeps the default exception behavior.
 
 ## Using getMapConverter 🧩
 Use `getMapConverter<Map>(keyConverter, valueConverter)` when you want to
@@ -294,11 +299,13 @@ Notes:
 - `getColumnarContainerConverter<T>(serializer)` is useful for serializing tabular data as a header row plus value rows.
 
 ## File input variants and unknown keys 🗂️
-File loading supports sequential, parallel, and auto-selected paths. You can also collect unknown keys.
+File loading supports sequential, parallel, and auto-selected paths. You can also pass a `FormatIssueSink` to customize unknown-key and recoverable-error behavior.
 
 ```cpp
 import rai.serialization.core;
 import rai.serialization.json_io;
+#include <string_view>
+#include <vector>
 
 struct Config {
     int value = 0;
@@ -312,10 +319,17 @@ struct Config {
 
 int main() {
     Config cfg{};
-    std::vector<std::string> unknownKeys;
+
+    struct IssueSink : rai::serialization::FormatIssueSink {
+        std::vector<std::string> unknownKeys;
+
+        void unknownKey(std::string_view key, std::size_t) override {
+            unknownKeys.emplace_back(key);
+        }
+    } issues;
 
     // Auto-select (small files -> sequential, large -> parallel)
-    rai::serialization::readJsonFile("config.json", cfg, unknownKeys);
+    rai::serialization::readJsonFile("config.json", cfg, issues);
 
     // Explicit modes
     rai::serialization::readJsonFileSequential("config.json", cfg);

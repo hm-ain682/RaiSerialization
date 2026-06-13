@@ -5,12 +5,12 @@ module;
 #include <cassert>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #ifndef NDEBUG
 #include <typeindex>
 #endif
 #include <type_traits>
 #include <variant>
-#include <vector>
 
 export module rai.serialization.json:json_parser;
 
@@ -53,6 +53,38 @@ private:
 #endif
 };
 
+/// @brief フォーマット読み込み中に検出した、読み取り継続可能な問題の通知先。
+/// @details JSON 固有ではなく、未知キーや値の型不一致など、上位層が警告・無視・例外化を
+///          選べる問題を扱う。デフォルト実装は未知キーを無視し、回復可能エラーは継続しない。
+class FormatIssueSink {
+public:
+    virtual ~FormatIssueSink() = default;
+
+    /// @brief 入力に存在したが、読み込み対象の型に対応するフィールドがないキーを通知する。
+    /// @param key 未知キー名。
+    /// @param position 未知キーに対応する値トークンの入力位置。
+    virtual void unknownKey(std::string_view key, std::size_t position) {
+        (void)key;
+        (void)position;
+    }
+
+    /// @brief 呼び出し側が回復可能と判断した読み取りエラーを通知する。
+    /// @param message エラー内容。
+    /// @param position 問題が起きたトークンの入力位置。
+    /// @return true の場合は呼び出し側の定めた方法で読み取りを継続し、false の場合は例外を送出する。
+    virtual bool recoverableError(std::string_view message, std::size_t position) {
+        (void)message;
+        (void)position;
+        return false;
+    }
+};
+
+/// @brief 問題を無視し、回復可能エラーでは例外を送出させる既定の Sink を返す。
+inline FormatIssueSink& defaultFormatIssueSink() {
+    static FormatIssueSink sink{};
+    return sink;
+}
+
 class JsonParser {
     // ******************************************************************************** トークン取得
 private:
@@ -68,8 +100,11 @@ private:
 public:
     // @brief コンストラクタ（トークン管理オブジェクトを指定）
     // @param tokenManager トークン管理オブジェクトの参照
-    explicit JsonParser(TokenManager& tokenManager, FormatContext context = {})
-        : tokenManager_(tokenManager), context_(context) {}
+    // @param context Converter から参照する呼び出し側所有の任意データ。
+    // @param issueSink 未知キーや回復可能エラーの通知先。
+    explicit JsonParser(TokenManager& tokenManager, FormatContext context = {},
+        FormatIssueSink& issueSink = defaultFormatIssueSink())
+        : tokenManager_(tokenManager), context_(context), issueSink_(issueSink) {}
 
     template <typename T>
     T* context() const {
@@ -163,61 +198,63 @@ public:
 
     // 値読み取り
     void readTo(bool& out) {
-        auto t = take();
+        const auto& t = peekToken();
         if (std::holds_alternative<json_token_detail::BoolVal>(t.value)) {
-            out = static_cast<bool>(std::get<json_token_detail::BoolVal>(t.value).v);
-        } else {
-            typeError("bool");
+            out = static_cast<bool>(std::get<json_token_detail::BoolVal>(take().value).v);
+            return;
         }
+        recoverableValueError("JsonParser: expected bool");
     }
 
     template<typename T>
         requires std::is_integral_v<T> && (!std::is_same_v<T, bool>)
     void readTo(T& out) {
-        auto t = take();
+        const auto& t = peekToken();
         if (std::holds_alternative<json_token_detail::IntVal>(t.value)) {
-            out = static_cast<T>(std::get<json_token_detail::IntVal>(t.value).v);
-        } else {
-            typeError("integer");
+            out = static_cast<T>(std::get<json_token_detail::IntVal>(take().value).v);
+            return;
         }
+        recoverableValueError("JsonParser: expected integer");
     }
 
     template<typename T>
         requires std::is_floating_point_v<T>
     void readTo(T& out) {
-        auto t = take();
+        const auto& t = peekToken();
         if (std::holds_alternative<json_token_detail::NumVal>(t.value)) {
-            out = static_cast<T>(std::get<json_token_detail::NumVal>(t.value).v);
+            out = static_cast<T>(std::get<json_token_detail::NumVal>(take().value).v);
             return;
         }
         if (std::holds_alternative<json_token_detail::IntVal>(t.value)) {
-            out = static_cast<T>(std::get<json_token_detail::IntVal>(t.value).v);
+            out = static_cast<T>(std::get<json_token_detail::IntVal>(take().value).v);
             return;
         }
-        typeError("number");
+        recoverableValueError("JsonParser: expected number");
     }
 
     void readTo(std::string& out) {
-        auto t = take();
+        const auto& t = peekToken();
         if (std::holds_alternative<json_token_detail::StrVal>(t.value)) {
-            out = std::get<std::string>(t.value);
+            out = std::get<std::string>(take().value);
             return;
         }
-        typeError("string");
+        recoverableValueError("JsonParser: expected string");
     }
 
     // @brief 文字列から1文字を読み込む
     void readTo(char& out) {
-        auto t = take();
+        const auto& t = peekToken();
         if (std::holds_alternative<json_token_detail::StrVal>(t.value)) {
-            const auto& str = std::get<json_token_detail::StrVal>(t.value);
+            const auto position = t.position;
+            auto str = std::get<json_token_detail::StrVal>(take().value);
             if (str.size() == 1) {
                 out = str[0];
                 return;
             }
-            throw std::runtime_error("JsonParser: expected single character string");
+            recoverableError("JsonParser: expected single character string", position);
+            return;
         }
-        typeError("string");
+        recoverableValueError("JsonParser: expected string");
     }
 
     // @brief 文字列から1文字を読み込む（符号付き）
@@ -236,64 +273,73 @@ public:
 
     // @brief 文字列から1バイトを読み込む（UTF-8コードユニット）
     void readTo(char8_t& out) {
-        auto t = take();
+        const auto& t = peekToken();
         if (std::holds_alternative<json_token_detail::StrVal>(t.value)) {
-            const auto& str = std::get<json_token_detail::StrVal>(t.value);
+            const auto position = t.position;
+            auto str = std::get<json_token_detail::StrVal>(take().value);
             if (str.size() == 1) {
                 out = static_cast<char8_t>(static_cast<unsigned char>(str[0]));
                 return;
             }
-            throw std::runtime_error("JsonParser: expected single byte string for char8_t");
+            recoverableError("JsonParser: expected single byte string for char8_t", position);
+            return;
         }
-        typeError("string");
+        recoverableValueError("JsonParser: expected string");
     }
 
     // @brief 文字列から1コードポイントを読み込む（UTF-16）
     void readTo(char16_t& out) {
-        auto t = take();
+        const auto& t = peekToken();
         if (std::holds_alternative<json_token_detail::StrVal>(t.value)) {
-            const auto& str = std::get<json_token_detail::StrVal>(t.value);
+            const auto position = t.position;
+            auto str = std::get<json_token_detail::StrVal>(take().value);
             char32_t codePoint;
             size_t byteCount;
             if (!decodeUtf8FirstCodePoint(str, codePoint, byteCount)) {
-                throw std::runtime_error("JsonParser: invalid UTF-8 sequence for char16_t");
+                recoverableError("JsonParser: invalid UTF-8 sequence for char16_t", position);
+                return;
             }
             // UTF-8文字列全体が1コードポイントであることを確認
             if (byteCount != str.size()) {
-                throw std::runtime_error("JsonParser: char16_t requires single code point (multi-character string given)");
+                recoverableError("JsonParser: char16_t requires single code point (multi-character string given)", position);
+                return;
             }
             // BMP範囲のみサポート（入れる先が1要素しかないのでサロゲートペアには対応できない）
             if (codePoint > 0xFFFF) {
-                throw std::runtime_error("JsonParser: char16_t does not support code points beyond BMP (U+FFFF)");
+                recoverableError("JsonParser: char16_t does not support code points beyond BMP (U+FFFF)", position);
+                return;
             }
 
             out = static_cast<char16_t>(codePoint);
             return;
         }
-        typeError("string");
+        recoverableValueError("JsonParser: expected string");
     }
 
     // @brief 文字列から1コードポイントを読み込む（UTF-32）
     void readTo(char32_t& out) {
-        auto t = take();
+        const auto& t = peekToken();
         if (std::holds_alternative<json_token_detail::StrVal>(t.value)) {
-            const auto& str = std::get<json_token_detail::StrVal>(t.value);
+            const auto position = t.position;
+            auto str = std::get<json_token_detail::StrVal>(take().value);
             char32_t codePoint;
             size_t byteCount;
 
             if (!decodeUtf8FirstCodePoint(str, codePoint, byteCount)) {
-                throw std::runtime_error("JsonParser: invalid UTF-8 sequence for char32_t");
+                recoverableError("JsonParser: invalid UTF-8 sequence for char32_t", position);
+                return;
             }
 
             // UTF-8文字列全体が1コードポイントであることを確認
             if (byteCount != str.size()) {
-                throw std::runtime_error("JsonParser: char32_t requires single code point (multi-character string given)");
+                recoverableError("JsonParser: char32_t requires single code point (multi-character string given)", position);
+                return;
             }
 
             out = codePoint;
             return;
         }
-        typeError("string");
+        recoverableValueError("JsonParser: expected string");
     }
 
     // @brief 文字列から1文字を読み込む（ワイド文字）
@@ -391,6 +437,13 @@ private:
 
 public:
     // 値全体をスキップ（未知キーなどで使用）。プリミティブ/配列/オブジェクトを丸ごと消費する。
+    // 未知キーを Sink に通知する。値自体の消費は呼び出し側が skipValue() で行う。
+    void noteUnknownKey(std::string_view key) {
+        issueSink_.unknownKey(key, nextPosition());
+    }
+
+    // 値全体をスキップする。未知キーなど、値を構築しない場合に使用する。
+    // プリミティブは1トークン、配列とオブジェクトは対応する終端まで丸ごと消費する。
     void skipValue() {
         auto t = take();
         // プリミティブ/Null/文字列/数値/真偽は1トークンで完結
@@ -418,7 +471,6 @@ public:
             endArray();
             return;
         }
-        // 想定外（Endマーカー/Keyなど値位置では不正）
         if (std::holds_alternative<json_token_detail::EndOfStreamTag>(t.value)) {
             typeError("value (got end-of-stream)");
         }
@@ -428,6 +480,20 @@ public:
     }
 
 private:
+    // Sink が継続を選ばなかった場合は、従来通り例外として扱う。
+    void recoverableError(std::string_view message, std::size_t position) {
+        if (!issueSink_.recoverableError(message, position)) {
+            throw std::runtime_error(std::string(message));
+        }
+    }
+
+    // 現在位置の値を構築できないことを Sink に通知する。
+    // readTo の型不一致では、継続時に現在位置の値全体を skipValue() で読み飛ばす。
+    void recoverableValueError(std::string_view message) {
+        recoverableError(message, nextPosition());
+        skipValue();
+    }
+
     [[noreturn]] static void typeError(const char* expected) {
         throw std::runtime_error(std::string("JsonParser: expected ") + expected);
     }
@@ -436,18 +502,7 @@ private:
 private:
     TokenManager& tokenManager_;       ///< トークン管理オブジェクトの参照
     FormatContext context_{};
-    std::vector<std::string> unknownKeys_{};  ///< 未知キー記録（診断用）
-
-public:
-    // @brief 未知キーの一覧を取得して所有権を移動
-    std::vector<std::string>&& getUnknownKeys() { return std::move(unknownKeys_); }
-
-    // @brief 未知キーを記録する（後で診断に利用）
-    // @param key 未知のキー名
-    void noteUnknownKey(std::string key) { unknownKeys_.push_back(std::move(key)); }
-
-    // @brief 未知キーの一覧を取得（const参照）
-    const std::vector<std::string>& unknownKeys() const { return unknownKeys_; }
+    FormatIssueSink& issueSink_;
 };
 
 }  // namespace rai::serialization

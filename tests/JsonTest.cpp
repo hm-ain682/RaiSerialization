@@ -17,6 +17,7 @@ import rai.collection.sorted_hash_array_map;
 #include <type_traits>
 #include <map>
 #include <memory>
+#include <vector>
 
 using namespace rai::serialization;
 using namespace rai::serialization::test;
@@ -982,9 +983,87 @@ struct ContextScaledHolder {
 TEST(JsonObjectConverterTest, ConverterCanReadCallerContextFromParser) {
     ReadScale scale{3};
     ContextScaledHolder out;
-    std::vector<std::string> unknownKeysOut;
-    readJsonString("{value:14}", out, unknownKeysOut, scale);
+    readJsonString("{value:14}", out, defaultFormatIssueSink(), scale);
     EXPECT_EQ(out.value, 42);
+}
+
+// ********************************************************************************
+// テストカテゴリ：FormatIssueSink
+// ********************************************************************************
+
+struct RecordingFormatIssueSink : FormatIssueSink {
+    std::vector<std::string> unknownKeys;
+    std::vector<std::size_t> unknownKeyPositions;
+    std::vector<std::string> errors;
+    bool continueOnError = false;
+
+    void unknownKey(std::string_view key, std::size_t position) override {
+        unknownKeys.emplace_back(key);
+        unknownKeyPositions.push_back(position);
+    }
+
+    bool recoverableError(std::string_view message, std::size_t position) override {
+        (void)position;
+        errors.emplace_back(message);
+        return continueOnError;
+    }
+};
+
+template <typename T>
+void readJsonStringWithIssueSink(const std::string& jsonText, T& out, FormatIssueSink& issueSink) {
+    std::string buffer = jsonText;
+    constexpr std::size_t aheadSize = 8;
+    buffer.reserve(buffer.size() + aheadSize);
+    ReadingAheadBuffer inputSource(std::move(buffer), aheadSize);
+    TokenManager tokenManager;
+    StdoutMessageOutput warningOutput;
+    JsonTokenizer<ReadingAheadBuffer, TokenManager> tokenizer(
+        inputSource, tokenManager, warningOutput);
+    tokenizer.tokenize();
+
+    JsonParser parser(tokenManager, FormatContext{}, issueSink);
+    readJsonObject(parser, out);
+}
+
+TEST(JsonFormatIssueSinkTest, UnknownKeyCollectionUsesSink) {
+    A out;
+    RecordingFormatIssueSink issueSink;
+    readJsonString("{w:true,x:1,extra:2,nested:{a:1}}", out, issueSink);
+    EXPECT_EQ(issueSink.unknownKeys, (std::vector<std::string>{"extra", "nested"}));
+}
+
+TEST(JsonFormatIssueSinkTest, CustomSinkReceivesUnknownKeys) {
+    A out;
+    RecordingFormatIssueSink issueSink;
+    const std::string json = "{w:true,x:1,extra:2}";
+    readJsonStringWithIssueSink(json, out, issueSink);
+    EXPECT_EQ(issueSink.unknownKeys, std::vector<std::string>{"extra"});
+    EXPECT_EQ(issueSink.unknownKeyPositions, std::vector<std::size_t>{json.find('2')});
+}
+
+TEST(JsonFormatIssueSinkTest, RecoverableValueErrorCanContinue) {
+    A out;
+    out.x = 99;
+    RecordingFormatIssueSink issueSink;
+    issueSink.continueOnError = true;
+    readJsonStringWithIssueSink("{w:true,x:\"bad\"}", out, issueSink);
+    EXPECT_EQ(out.x, 99);
+    EXPECT_EQ(issueSink.errors, std::vector<std::string>{"JsonParser: expected integer"});
+}
+
+TEST(JsonFormatIssueSinkTest, RecoverableValueErrorSkipsCurrentValue) {
+    A out;
+    out.x = 99;
+    RecordingFormatIssueSink issueSink;
+    issueSink.continueOnError = true;
+    readJsonStringWithIssueSink("{w:true,x:{nested:[1,2,3]}}", out, issueSink);
+    EXPECT_EQ(out.x, 99);
+    EXPECT_EQ(issueSink.errors, std::vector<std::string>{"JsonParser: expected integer"});
+}
+
+TEST(JsonFormatIssueSinkTest, RecoverableValueErrorThrowsByDefault) {
+    A out;
+    EXPECT_THROW(readJsonString("{w:true,x:\"bad\"}", out), std::runtime_error);
 }
 
 // ********************************************************************************
