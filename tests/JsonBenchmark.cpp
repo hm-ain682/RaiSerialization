@@ -18,6 +18,7 @@ import rai.collection.sorted_hash_array_map;
 #include <iostream>
 #include <cmath>
 #include <utility>
+#include <typeindex>
 
 using namespace rai::serialization;
 
@@ -120,12 +121,15 @@ struct ContainerNode : public BaseNode {
 // ポリモーフィック型のディスパッチ登録
 // ********************************************************************************
 
-using MapEntry = std::pair<std::string_view, PolymorphicTypeFactory<std::unique_ptr<BaseNode>>>;
+using BaseNodePtr = std::unique_ptr<BaseNode>;
+using MapEntry = std::pair<std::string_view, PolymorphicTypeEntry<BaseNodePtr>>;
 
 // ポリモーフィック型エントリマップ（makeSortedHashArrayMapを使用）
 inline const auto baseNodeEntriesMap = rai::collection::makeSortedHashArrayMap(
-    MapEntry{ std::string_view("DataNode"), [](JsonParser*){ return std::make_unique<DataNode>(); }},
-    MapEntry{ std::string_view("ContainerNode"), [](JsonParser*){ return std::make_unique<ContainerNode>(); } }
+    MapEntry{ std::string_view("DataNode"), { std::type_index(typeid(DataNode)),
+        [](JsonParser*) -> BaseNodePtr { return std::make_unique<DataNode>(); } } },
+    MapEntry{ std::string_view("ContainerNode"), { std::type_index(typeid(ContainerNode)),
+        [](JsonParser*) -> BaseNodePtr { return std::make_unique<ContainerNode>(); } } }
 );
 
 

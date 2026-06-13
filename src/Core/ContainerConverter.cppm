@@ -199,7 +199,7 @@ struct ContainerConverter {
     /// @brief コンバータを生成する。
     /// @param elemConv 要素変換用コンバータ。
     constexpr explicit ContainerConverter(const ElementConverter& elemConv)
-        : elementConverter_(std::cref(elemConv)) {
+        : elementConverter_(elemConv) {
     }
 
     /// @brief コンテナをJSON配列として書き出す。
@@ -208,7 +208,7 @@ struct ContainerConverter {
     void write(JsonWriter& writer, const Container& range) const {
         writer.startArray();
         for (const auto& e : range) {
-            elementConverter_.get().write(writer, e);
+            elementConverter_.write(writer, e);
         }
         writer.endArray();
     }
@@ -220,7 +220,7 @@ struct ContainerConverter {
         parser.startArray();
         while (!parser.nextIsEndArray()) {
             Element elem{};
-            elementConverter_.get().read(parser, elem);
+            elementConverter_.read(parser, elem);
             insertContainerElement(out, std::move(elem));
         }
         parser.endArray();
@@ -228,7 +228,7 @@ struct ContainerConverter {
 
 private:
     /// @brief 要素変換用コンバータへの参照
-    std::reference_wrapper<const ElementConverterT> elementConverter_{};
+    ElementConverterT elementConverter_{};
 };
 
 /// @brief コンテナ型に対応する既定の ContainerConverter を返す。

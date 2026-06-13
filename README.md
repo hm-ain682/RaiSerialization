@@ -403,10 +403,20 @@ struct Rectangle : public Shape {
 
 using MapEntry = std::pair<
     std::string_view,
-    rai::serialization::PolymorphicTypeFactory<std::unique_ptr<Shape>>>;
+    rai::serialization::PolymorphicTypeEntry<std::unique_ptr<Shape>>>;
 inline const auto shapeEntriesMap = rai::collection::makeSortedHashArrayMap(
-    MapEntry{ "Circle",    [](rai::serialization::JsonParser*) { return std::make_unique<Circle>(); } },
-    MapEntry{ "Rectangle", [](rai::serialization::JsonParser*) { return std::make_unique<Rectangle>(); } }
+    MapEntry{ "Circle", {
+        std::type_index(typeid(Circle)),
+        [](rai::serialization::JsonParser*) -> std::unique_ptr<Shape> {
+            return std::make_unique<Circle>();
+        }
+    } },
+    MapEntry{ "Rectangle", {
+        std::type_index(typeid(Rectangle)),
+        [](rai::serialization::JsonParser*) -> std::unique_ptr<Shape> {
+            return std::make_unique<Rectangle>();
+        }
+    } }
 );
 
 struct Drawing {
@@ -431,12 +441,16 @@ struct Drawing {
 ```
 
 > Note: Polymorphic converters accept an optional `allowNull` flag (default: `true`).
-> A `PolymorphicTypeFactory` receives `JsonParser*`, so the factory can read
+> `PolymorphicTypeEntry` stores `type_index` for writing and a factory for reading.
+> The factory receives `JsonParser*`, so it can read
 > caller-provided context with `parser.context<T>()`.
 >
 > ```cpp
-> MapEntry{ "PooledCircle", [](rai::serialization::JsonParser* parser) {
->     return parser->context<MyPool>()->makeCircle();
+> MapEntry{ "PooledCircle", {
+>     std::type_index(typeid(Circle)),
+>     [](rai::serialization::JsonParser* parser) -> std::unique_ptr<Shape> {
+>         return parser->context<MyPool>()->makeCircle();
+>     }
 > } }
 > ```
 

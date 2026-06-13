@@ -41,6 +41,51 @@ export template <typename Ptr>
     requires IsPointerLike<Ptr>
 using PolymorphicTypeFactory = std::function<Ptr(JsonParser*)>;
 
+/// @brief serializer() を持つポリモーフィック型の登録情報。
+/// @details type は書き込み時の型名逆引きに使う。factory は読み込み時の生成だけを担当する。
+export template <typename Ptr>
+    requires IsPointerLike<Ptr>
+struct PolymorphicTypeEntry {
+    using Factory = PolymorphicTypeFactory<Ptr>;
+
+    std::type_index type;
+    Factory factory;
+};
+
+/// @brief 書き込み時に実型から JSON 上の型名を引くための内部マップ。
+class PolymorphicTypeNameMap {
+public:
+    PolymorphicTypeNameMap() = default;
+
+    template <typename Entries>
+    explicit PolymorphicTypeNameMap(const Entries& entries) {
+        for (const auto& entry : entries) {
+            entries_.emplace_back(entry.value.type, entry.key);
+        }
+    }
+
+    const std::string_view* findValue(std::type_index type) const {
+        for (const auto& [entryType, typeName] : entries_) {
+            if (entryType == type) {
+                return &typeName;
+            }
+        }
+        return nullptr;
+    }
+
+private:
+    std::vector<std::pair<std::type_index, std::string_view>> entries_;
+};
+
+template <typename Entries>
+PolymorphicTypeNameMap makePolymorphicTypeNameMap(const Entries& entries) {
+    return PolymorphicTypeNameMap(entries);
+}
+
+template <typename Map>
+using PolymorphicMapEntryValue =
+    std::remove_cvref_t<decltype(std::declval<typename Map::value_type>().value)>;
+
 /// @brief serializer() を持たないポリモーフィック型を外部 ObjectSerializer で扱うための登録情報。
 /// @details type は書き込み時に実際の派生型から型タグを逆引きするために使う。
 export template <typename Ptr>
@@ -141,13 +186,11 @@ Ptr readPolymorphicInstanceOrNull(JsonParser& parser,
 }
 
 // ヘルパ: entries マップを走査してオブジェクトの型名を取得します（ポリモーフィック書き出し時に使用）
-export template <typename BaseType, typename Map>
-std::string getTypeNameFromMap(const BaseType& obj, Map entries) {
-    for (const auto& it : entries) {
-        auto testObj = it.value(nullptr);
-        if (typeid(obj) == typeid(*testObj)) {
-            return std::string(it.key);
-        }
+export template <typename BaseType, typename TypeNameMap>
+std::string getTypeNameFromMap(const BaseType& obj, const TypeNameMap& typeNames) {
+    const auto* typeName = typeNames.findValue(std::type_index(typeid(obj)));
+    if (typeName != nullptr) {
+        return std::string(*typeName);
     }
     throw std::runtime_error(std::string("Unknown polymorphic type: ") + typeid(obj).name());
 }
@@ -167,7 +210,8 @@ std::string getTypeNameFromMap(const BaseType& obj,
 }
 
 // PolymorphicConverter: ポインタ型（unique_ptr/shared_ptr/生ポインタ）に対して IsObjectConverter を満たすコンバータ
-export template <typename Ptr, typename EntryValue = PolymorphicTypeFactory<Ptr>>
+export template <typename Ptr, typename EntryValue = PolymorphicTypeFactory<Ptr>,
+    typename TypeNameMap = PolymorphicTypeNameMap>
     requires IsPointerLike<Ptr>
 struct PolymorphicConverter {
     using Value = Ptr;
@@ -178,10 +222,14 @@ struct PolymorphicConverter {
     using Map = collection::MapReference<Key, Entry>;
 
     // Accept a MapReference-like object (SortedHashArrayMap is convertible)
-    template <typename Entries>
-    constexpr explicit PolymorphicConverter(
-        const Entries& entries, const char* jsonKey = "type", bool allowNull = true)
-        : entries_(entries), jsonKey_(jsonKey), allowNull_(allowNull) {}
+    template <typename Entries, typename TypeNames>
+    explicit PolymorphicConverter(
+        const Entries& entries, TypeNames&& typeNames,
+        const char* jsonKey = "type", bool allowNull = true)
+        : entries_(entries),
+          typeNames_(std::forward<TypeNames>(typeNames)),
+          jsonKey_(jsonKey),
+          allowNull_(allowNull) {}
 
     void read(JsonParser& parser, Ptr& out) const {
         if (allowNull_) {
@@ -197,7 +245,7 @@ struct PolymorphicConverter {
             return;
         }
         writer.startObject();
-        std::string typeName = getTypeNameFromMap(*ptr, entries_);
+        std::string typeName = getTypeNameFromMap(*ptr, typeNames_);
         writer.key(jsonKey_);
         writer.writeObject(typeName);
         Element* raw = getRawPointer(ptr);
@@ -228,6 +276,7 @@ struct PolymorphicConverter {
 
 private:
     Map entries_{};
+    TypeNameMap typeNames_{};
     const char* jsonKey_{};
     bool allowNull_{true};
 };
@@ -239,9 +288,22 @@ private:
 /// @param allowNull null許容かどうか
 export template <typename Ptr, typename Map>
     requires IsPointerLike<Ptr>
-constexpr auto getPolymorphicConverter(
+auto getPolymorphicConverter(
     const Map& entries, const char* jsonKey = "type", bool allowNull = true) {
-    return PolymorphicConverter<Ptr>(entries, jsonKey, allowNull);
+    using EntryValue = PolymorphicMapEntryValue<Map>;
+    return PolymorphicConverter<Ptr, EntryValue>(
+        entries, makePolymorphicTypeNameMap(entries), jsonKey, allowNull);
+}
+
+/// @brief MapReference で渡された serializer() 持ち登録からポリモーフィック型用コンバータを構築する。
+export template <typename Ptr, typename Traits>
+    requires IsPointerLike<Ptr>
+auto getPolymorphicConverter(
+    const collection::MapReference<
+        std::string_view, PolymorphicTypeEntry<Ptr>, Traits>& entries,
+    const char* jsonKey = "type", bool allowNull = true) {
+    return PolymorphicConverter<Ptr, PolymorphicTypeEntry<Ptr>>(
+        entries, makePolymorphicTypeNameMap(entries), jsonKey, allowNull);
 }
 
 /// @brief ポリモーフィック型用のコンバータを構築して返す。
@@ -251,13 +313,13 @@ constexpr auto getPolymorphicConverter(
 /// @param allowNull null許容かどうか
 export template <typename Ptr, std::size_t N, typename Traits>
     requires IsPointerLike<Ptr>
-constexpr auto getPolymorphicConverter(
+auto getPolymorphicConverter(
     const collection::SortedHashArrayMap<
         std::string_view, PolymorphicSerializerEntry<Ptr>, N, Traits>& entries,
     const char* jsonKey = "type", bool allowNull = true) {
     // 値が ObjectSerializer を含む map 用の overload。
     return PolymorphicConverter<Ptr, PolymorphicSerializerEntry<Ptr>>(
-        entries, jsonKey, allowNull);
+        entries, makePolymorphicTypeNameMap(entries), jsonKey, allowNull);
 }
 
 /// @brief MapReference で渡された外部 serializer 登録からポリモーフィック型用コンバータを構築する。
@@ -267,13 +329,13 @@ constexpr auto getPolymorphicConverter(
 /// @param allowNull null許容かどうか
 export template <typename Ptr, typename Traits>
     requires IsPointerLike<Ptr>
-constexpr auto getPolymorphicConverter(
+auto getPolymorphicConverter(
     const collection::MapReference<
         std::string_view, PolymorphicSerializerEntry<Ptr>, Traits>& entries,
     const char* jsonKey = "type", bool allowNull = true) {
     // SortedHashArrayMap を保持しない呼び出し側にも同じ外部 serializer パスを提供する。
     return PolymorphicConverter<Ptr, PolymorphicSerializerEntry<Ptr>>(
-        entries, jsonKey, allowNull);
+        entries, makePolymorphicTypeNameMap(entries), jsonKey, allowNull);
 }
 
 /// @brief ポリモーフィックな配列用のコンバータを構築して返す。
@@ -284,10 +346,27 @@ constexpr auto getPolymorphicConverter(
 export template <typename Container, typename Map>
     requires IsContainer<Container>
     && IsPointerLike<std::remove_cvref_t<std::ranges::range_value_t<Container>>>
-constexpr auto getPolymorphicArrayConverter(
+auto getPolymorphicArrayConverter(
     const Map& entries, const char* jsonKey = "type", bool allowNull = true) {
     using ElementPtr = std::remove_cvref_t<std::ranges::range_value_t<Container>>;
-    static const auto elementConverter =
+    const auto elementConverter =
+        getPolymorphicConverter<ElementPtr>(entries, jsonKey, allowNull);
+    using ElementConverter = std::remove_cvref_t<decltype(elementConverter)>;
+    return ContainerConverter<Container, ElementConverter>(elementConverter);
+}
+
+/// @brief MapReference で渡された serializer() 持ち登録を使うポリモーフィック配列用コンバータを構築する。
+export template <typename Container, typename Traits>
+    requires IsContainer<Container>
+    && IsPointerLike<std::remove_cvref_t<std::ranges::range_value_t<Container>>>
+auto getPolymorphicArrayConverter(
+    const collection::MapReference<
+        std::string_view,
+        PolymorphicTypeEntry<std::remove_cvref_t<std::ranges::range_value_t<Container>>>,
+        Traits>& entries,
+    const char* jsonKey = "type", bool allowNull = true) {
+    using ElementPtr = std::remove_cvref_t<std::ranges::range_value_t<Container>>;
+    const auto elementConverter =
         getPolymorphicConverter<ElementPtr>(entries, jsonKey, allowNull);
     using ElementConverter = std::remove_cvref_t<decltype(elementConverter)>;
     return ContainerConverter<Container, ElementConverter>(elementConverter);
@@ -301,7 +380,7 @@ constexpr auto getPolymorphicArrayConverter(
 export template <typename Container, std::size_t N, typename Traits>
     requires IsContainer<Container>
     && IsPointerLike<std::remove_cvref_t<std::ranges::range_value_t<Container>>>
-constexpr auto getPolymorphicArrayConverter(
+auto getPolymorphicArrayConverter(
     const collection::SortedHashArrayMap<
         std::string_view,
         PolymorphicSerializerEntry<std::remove_cvref_t<std::ranges::range_value_t<Container>>>,
@@ -309,7 +388,7 @@ constexpr auto getPolymorphicArrayConverter(
         Traits>& entries,
     const char* jsonKey = "type", bool allowNull = true) {
     using ElementPtr = std::remove_cvref_t<std::ranges::range_value_t<Container>>;
-    static const auto elementConverter =
+    const auto elementConverter =
         getPolymorphicConverter<ElementPtr>(entries, jsonKey, allowNull);
     using ElementConverter = std::remove_cvref_t<decltype(elementConverter)>;
     return ContainerConverter<Container, ElementConverter>(elementConverter);
@@ -323,14 +402,14 @@ constexpr auto getPolymorphicArrayConverter(
 export template <typename Container, typename Traits>
     requires IsContainer<Container>
     && IsPointerLike<std::remove_cvref_t<std::ranges::range_value_t<Container>>>
-constexpr auto getPolymorphicArrayConverter(
+auto getPolymorphicArrayConverter(
     const collection::MapReference<
         std::string_view,
         PolymorphicSerializerEntry<std::remove_cvref_t<std::ranges::range_value_t<Container>>>,
         Traits>& entries,
     const char* jsonKey = "type", bool allowNull = true) {
     using ElementPtr = std::remove_cvref_t<std::ranges::range_value_t<Container>>;
-    static const auto elementConverter =
+    const auto elementConverter =
         getPolymorphicConverter<ElementPtr>(entries, jsonKey, allowNull);
     using ElementConverter = std::remove_cvref_t<decltype(elementConverter)>;
     return ContainerConverter<Container, ElementConverter>(elementConverter);

@@ -7,6 +7,7 @@
 #include <memory>
 #include <algorithm>
 #include <functional>
+#include <typeindex>
 import rai.serialization.core;
 import rai.serialization.json;
 import rai.serialization.json_io;
@@ -497,15 +498,17 @@ struct MapPolymorphicTwo : MapPolymorphicBase {
 
 using MapPolymorphicPtr = std::unique_ptr<MapPolymorphicBase>;
 using MapPolymorphicEntry =
-    std::pair<std::string_view, PolymorphicTypeFactory<MapPolymorphicPtr>>;
+    std::pair<std::string_view, PolymorphicTypeEntry<MapPolymorphicPtr>>;
 
 inline const auto mapPolymorphicEntries = rai::collection::makeSortedHashArrayMap(
-    MapPolymorphicEntry{ "One", [](JsonParser*) -> MapPolymorphicPtr {
+    MapPolymorphicEntry{ "One", { std::type_index(typeid(MapPolymorphicOne)),
+    [](JsonParser*) -> MapPolymorphicPtr {
         return std::make_unique<MapPolymorphicOne>();
-    } },
-    MapPolymorphicEntry{ "Two", [](JsonParser*) -> MapPolymorphicPtr {
+    } } },
+    MapPolymorphicEntry{ "Two", { std::type_index(typeid(MapPolymorphicTwo)),
+    [](JsonParser*) -> MapPolymorphicPtr {
         return std::make_unique<MapPolymorphicTwo>();
-    } }
+    } } }
 );
 
 struct MapPolymorphicHolder {

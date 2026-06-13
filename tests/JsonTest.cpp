@@ -144,20 +144,24 @@ struct PFromFactoryContext : public PB {
     }
 };
 
-using MapEntry = std::pair<std::string_view, PolymorphicTypeFactory<std::unique_ptr<PB>>>;
+using PBPtr = std::unique_ptr<PB>;
+using MapEntry = std::pair<std::string_view, PolymorphicTypeEntry<PBPtr>>;
 
 // entries を直接マップ構築（配列を経由せず簡潔に記述）
 inline const auto pbEntriesMap = rai::collection::makeSortedHashArrayMap(
-    MapEntry{ "One", [](JsonParser*) { return std::make_unique<POne>(); } },
-    MapEntry{ "Two", [](JsonParser*) { return std::make_unique<PTwo>(); } }
+    MapEntry{ "One", { std::type_index(typeid(POne)),
+        [](JsonParser*) -> PBPtr { return std::make_unique<POne>(); } } },
+    MapEntry{ "Two", { std::type_index(typeid(PTwo)),
+        [](JsonParser*) -> PBPtr { return std::make_unique<PTwo>(); } } }
 );
 
 inline const auto contextFactoryEntriesMap = rai::collection::makeSortedHashArrayMap(
-    MapEntry{ "FromContext", [](JsonParser* parser) -> std::unique_ptr<PB> {
+    MapEntry{ "FromContext", { std::type_index(typeid(PFromFactoryContext)),
+    [](JsonParser* parser) -> PBPtr {
         auto instance = std::make_unique<PFromFactoryContext>();
         instance->seeded = parser->context<PolymorphicFactorySeed>()->value;
         return instance;
-    } }
+    } } }
 );
 
 struct Holder {
@@ -264,11 +268,13 @@ private:
 };
 
 using NonStdPBPtr = NonStdOwningPtr<PB>;
-using NonStdMapEntry = std::pair<std::string_view, PolymorphicTypeFactory<NonStdPBPtr>>;
+using NonStdMapEntry = std::pair<std::string_view, PolymorphicTypeEntry<NonStdPBPtr>>;
 
 inline const auto nonStdPbEntriesMap = rai::collection::makeSortedHashArrayMap(
-    NonStdMapEntry{ "One", [](JsonParser*) { return NonStdPBPtr(new POne()); } },
-    NonStdMapEntry{ "Two", [](JsonParser*) { return NonStdPBPtr(new PTwo()); } }
+    NonStdMapEntry{ "One", { std::type_index(typeid(POne)),
+        [](JsonParser*) { return NonStdPBPtr(new POne()); } } },
+    NonStdMapEntry{ "Two", { std::type_index(typeid(PTwo)),
+        [](JsonParser*) { return NonStdPBPtr(new PTwo()); } } }
 );
 
 struct NonStdPtrHolder {
@@ -473,6 +479,13 @@ TEST(JsonPolymorphicTest, WriteAndReadRoundTripUsingCustomKey) {
     Holder original;
     original.item = std::move(one);
     testJsonRoundTrip(original, "{item:{kind:\"One\",x:99},arr:[]}");
+}
+
+TEST(JsonPolymorphicTest, WriteUsesTypeNameMapWithoutCallingFactory) {
+    ContextFactoryHolder original;
+    original.item = std::make_unique<PFromFactoryContext>();
+    dynamic_cast<PFromFactoryContext*>(original.item.get())->seeded = 123;
+    EXPECT_EQ(getJsonContent(original), "{item:{kind:\"FromContext\"}}");
 }
 
 TEST(JsonPolymorphicTest, NonStdPointerLikeRoundTrip) {
