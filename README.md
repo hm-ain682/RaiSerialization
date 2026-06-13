@@ -365,14 +365,15 @@ struct ColorHolder {
 ```
 
 ## Polymorphic fields 🧩
-Register derived-type factory functions in a map and the serializer will include a type key (default: `"type"`) in the JSON.
+Register derived-type entries and the serializer will include a type key (default: `"type"`) in the JSON.
 The type key can be customized when creating the polymorphic field.
 
 ```cpp
 import rai.serialization.core;
 import rai.serialization.json_io;
-import rai.collection.sorted_hash_array_map;
+#include <array>
 #include <memory>
+#include <vector>
 
 struct Shape {
     virtual ~Shape() = default;
@@ -401,23 +402,16 @@ struct Rectangle : public Shape {
     }
 };
 
-using MapEntry = std::pair<
-    std::string_view,
-    rai::serialization::PolymorphicTypeEntry<std::unique_ptr<Shape>>>;
-inline const auto shapeEntriesMap = rai::collection::makeSortedHashArrayMap(
-    MapEntry{ "Circle", {
-        std::type_index(typeid(Circle)),
+inline const auto shapeEntriesMap = std::array{
+    rai::serialization::makePolymorphicTypeEntry<Circle>("Circle",
         [](rai::serialization::JsonParser*) -> std::unique_ptr<Shape> {
             return std::make_unique<Circle>();
-        }
-    } },
-    MapEntry{ "Rectangle", {
-        std::type_index(typeid(Rectangle)),
+        }),
+    rai::serialization::makePolymorphicTypeEntry<Rectangle>("Rectangle",
         [](rai::serialization::JsonParser*) -> std::unique_ptr<Shape> {
             return std::make_unique<Rectangle>();
-        }
-    } }
-);
+        })
+};
 
 struct Drawing {
     std::unique_ptr<Shape> mainShape;
@@ -441,17 +435,15 @@ struct Drawing {
 ```
 
 > Note: Polymorphic converters accept an optional `allowNull` flag (default: `true`).
-> `PolymorphicTypeEntry` stores `type_index` for writing and a factory for reading.
+> `PolymorphicTypeEntry` stores the JSON type name, `type_index` for writing, and a factory for reading.
 > The factory receives `JsonParser*`, so it can read
 > caller-provided context with `parser.context<T>()`.
 >
 > ```cpp
-> MapEntry{ "PooledCircle", {
->     std::type_index(typeid(Circle)),
+> rai::serialization::makePolymorphicTypeEntry<Circle>("PooledCircle",
 >     [](rai::serialization::JsonParser* parser) -> std::unique_ptr<Shape> {
 >         return parser->context<MyPool>()->makeCircle();
->     }
-> } }
+>     })
 > ```
 
 ### Polymorphic fields with external serializers
@@ -483,21 +475,15 @@ static const auto rectangleFields = rai::serialization::getFieldSet(
 );
 
 using ShapePtr = std::unique_ptr<Shape>;
-using ShapeEntry = rai::serialization::PolymorphicSerializerEntry<ShapePtr>;
-using ShapeMapEntry = std::pair<std::string_view, ShapeEntry>;
 
-inline const auto shapeEntriesMap = rai::collection::makeSortedHashArrayMap(
-    ShapeMapEntry{ "Circle", ShapeEntry{
-        std::type_index(typeid(Circle)),
+inline const auto shapeEntriesMap = std::array{
+    rai::serialization::makePolymorphicSerializerEntry<Circle>("Circle",
         [](rai::serialization::JsonParser*) -> ShapePtr { return std::make_unique<Circle>(); },
-        circleFields
-    } },
-    ShapeMapEntry{ "Rectangle", ShapeEntry{
-        std::type_index(typeid(Rectangle)),
+        circleFields),
+    rai::serialization::makePolymorphicSerializerEntry<Rectangle>("Rectangle",
         [](rai::serialization::JsonParser*) -> ShapePtr { return std::make_unique<Rectangle>(); },
-        rectangleFields
-    } }
-);
+        rectangleFields)
+};
 ```
 
 Writing uses `typeid(*ptr)` to select the matching entry, so the pointed-to base type must be polymorphic

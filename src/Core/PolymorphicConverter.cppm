@@ -35,84 +35,136 @@ namespace rai::serialization {
 
 // ------------------------- Polymorphic helpers and fields -------------------------
 
-/// @brief ポリモーフィック型用のファクトリ関数型（ポインタ型を返す）。
-/// @param parser 読み込み中の JsonParser。書き込み時の型名逆引きでは nullptr。
+/// @brief 読み込み時に具象ポリモーフィックオブジェクトを生成する factory 型。
+/// @details JsonParser を受け取るため、factory 内で parser.context<T>() などの読み込み時状態を参照できる。
 export template <typename Ptr>
     requires IsPointerLike<Ptr>
 using PolymorphicTypeFactory = std::function<Ptr(JsonParser*)>;
 
-/// @brief serializer() を持つポリモーフィック型の登録情報。
-/// @details type は書き込み時の型名逆引きに使う。factory は読み込み時の生成だけを担当する。
+/// @brief serializer() を公開するポリモーフィック型の登録エントリ。
+/// @details typeName は JSON 上の型名、type は書き込み時の逆引き、factory は読み込み時の生成に使う。
 export template <typename Ptr>
     requires IsPointerLike<Ptr>
 struct PolymorphicTypeEntry {
     using Factory = PolymorphicTypeFactory<Ptr>;
 
+    /// @brief 型判別フィールドに読み書きする JSON 上の型名。
+    std::string_view typeName;
+    /// @brief 書き込み時に具象 C++ 型から typeName を引くための型情報。
     std::type_index type;
+    /// @brief JSON の typeName が一致したときにインスタンスを生成する factory。
     Factory factory;
 };
 
-/// @brief 書き込み時に実型から JSON 上の型名を引くための内部マップ。
-class PolymorphicTypeNameMap {
-public:
-    PolymorphicTypeNameMap() = default;
-
-    template <typename Entries>
-    explicit PolymorphicTypeNameMap(const Entries& entries) {
-        for (const auto& entry : entries) {
-            entries_.emplace_back(entry.value.type, entry.key);
-        }
-    }
-
-    const std::string_view* findValue(std::type_index type) const {
-        for (const auto& [entryType, typeName] : entries_) {
-            if (entryType == type) {
-                return &typeName;
-            }
-        }
-        return nullptr;
-    }
-
-private:
-    std::vector<std::pair<std::type_index, std::string_view>> entries_;
-};
-
-template <typename Entries>
-PolymorphicTypeNameMap makePolymorphicTypeNameMap(const Entries& entries) {
-    return PolymorphicTypeNameMap(entries);
-}
-
-template <typename Map>
-using PolymorphicMapEntryValue =
-    std::remove_cvref_t<decltype(std::declval<typename Map::value_type>().value)>;
-
-/// @brief serializer() を持たないポリモーフィック型を外部 ObjectSerializer で扱うための登録情報。
-/// @details type は書き込み時に実際の派生型から型タグを逆引きするために使う。
+/// @brief 外部 ObjectSerializer で扱うポリモーフィック型の登録エントリ。
+/// @details 具象型が serializer() を公開しない場合に使う。
 export template <typename Ptr>
     requires IsPointerLike<Ptr>
 struct PolymorphicSerializerEntry {
     using Factory = PolymorphicTypeFactory<Ptr>;
 
+    /// @brief 型判別フィールドに読み書きする JSON 上の型名。
+    std::string_view typeName;
+    /// @brief 書き込み時に具象 C++ 型から typeName と serializer を引くための型情報。
     std::type_index type;
+    /// @brief JSON の typeName が一致したときにインスタンスを生成する factory。
     Factory factory;
+    /// @brief 具象オブジェクトのフィールドを読み書きする外部 serializer。
     std::reference_wrapper<const ObjectSerializer> serializer;
 };
 
-/// @brief ポリモーフィックオブジェクト1つ分を読み取るヘルパー関数。
-/// @tparam Ptr ポインタ型（unique_ptr/shared_ptr/生ポインタ）。
-/// @param parser JsonParserの参照。
-/// @param entriesMap 型名からファクトリ関数へのマッピング。
-/// @param jsonKey 型判別用のJSONキー名。
-/// @return 読み取ったオブジェクトのポインタ。または型キーが見つからない／未知の型名の場合はnullptr。
-export template <typename Ptr, typename EntryValue = PolymorphicTypeFactory<Ptr>>
+/// @brief 呼び出し側に std::type_index を書かせず PolymorphicTypeEntry を作る。
+/// @param typeName JSON 上の型名。
+/// @param factory JsonParser* を受け取りポインタ風の値を返す callable。
+export template <typename Concrete, typename Factory>
+auto makePolymorphicTypeEntry(std::string_view typeName, Factory&& factory) {
+    using Ptr = std::invoke_result_t<Factory&, JsonParser*>;
+    return PolymorphicTypeEntry<Ptr>{
+        typeName,
+        std::type_index(typeid(Concrete)),
+        PolymorphicTypeFactory<Ptr>(std::forward<Factory>(factory))
+    };
+}
+
+/// @brief 呼び出し側に std::type_index を書かせず PolymorphicSerializerEntry を作る。
+/// @param typeName JSON 上の型名。
+/// @param factory JsonParser* を受け取りポインタ風の値を返す callable。
+/// @param serializer 具象型を読み書きする外部 serializer。
+export template <typename Concrete, typename Factory>
+auto makePolymorphicSerializerEntry(std::string_view typeName, Factory&& factory,
+    const ObjectSerializer& serializer) {
+    using Ptr = std::invoke_result_t<Factory&, JsonParser*>;
+    return PolymorphicSerializerEntry<Ptr>{
+        typeName,
+        std::type_index(typeid(Concrete)),
+        PolymorphicTypeFactory<Ptr>(std::forward<Factory>(factory)),
+        serializer
+    };
+}
+
+/// @brief std::type_index を SortedHashArrayMap のキーにするための traits。
+struct TypeIndexMapTraits {
+    struct Hash {
+        std::size_t operator()(std::type_index type) const {
+            return type.hash_code();
+        }
+    };
+
+    using KeyEqual = std::equal_to<>;
+    using KeyCompare = std::less<>;
+};
+
+/// @brief 登録エントリを「typeName -> entry」の map 要素へ変換する。
+template <typename Entry>
+std::pair<std::string_view, Entry> makeTypeNameEntry(const Entry& entry) {
+    return {entry.typeName, entry};
+}
+
+/// @brief 登録エントリを「具象型 -> typeName」の map 要素へ変換する。
+template <typename Entry>
+std::pair<std::type_index, std::string_view> makeTypeIndexEntry(const Entry& entry) {
+    return {entry.type, entry.typeName};
+}
+
+/// @brief 登録配列から読み込み用の「typeName -> entry」map を構築する。
+template <typename Entry, std::size_t N, std::size_t... Is>
+auto makePolymorphicEntriesMapImpl(
+    const std::array<Entry, N>& entries, std::index_sequence<Is...>) {
+    return collection::SortedHashArrayMap<std::string_view, Entry, N>(
+        makeTypeNameEntry(entries[Is])...);
+}
+
+/// @brief 登録配列から読み込み用の「typeName -> entry」map を構築する。
+template <typename Entry, std::size_t N>
+auto makePolymorphicEntriesMap(const std::array<Entry, N>& entries) {
+    return makePolymorphicEntriesMapImpl(entries, std::make_index_sequence<N>{});
+}
+
+/// @brief 登録配列から書き込み用の「具象型 -> typeName」map を構築する。
+template <typename Entry, std::size_t N, std::size_t... Is>
+auto makePolymorphicTypeMapImpl(
+    const std::array<Entry, N>& entries, std::index_sequence<Is...>) {
+    return collection::SortedHashArrayMap<
+        std::type_index, std::string_view, N, TypeIndexMapTraits>(
+        makeTypeIndexEntry(entries[Is])...);
+}
+
+/// @brief 登録配列から書き込み用の「具象型 -> typeName」map を構築する。
+template <typename Entry, std::size_t N>
+auto makePolymorphicTypeMap(const std::array<Entry, N>& entries) {
+    return makePolymorphicTypeMapImpl(entries, std::make_index_sequence<N>{});
+}
+
+/// @brief ポリモーフィックオブジェクトを 1 つ読み込む。
+/// @details 先頭フィールドを型判別キーとして読み、対応する entry の factory でインスタンスを生成する。
+export template <typename Ptr, typename Entry, std::size_t N>
     requires IsPointerLike<Ptr>
 Ptr readPolymorphicInstance(JsonParser& parser,
-    const collection::MapReference<std::string_view, EntryValue>& entriesMap,
+    const collection::SortedHashArrayMap<std::string_view, Entry, N>& entriesMap,
     std::string_view jsonKey) {
 
     parser.startObject();
 
-    // 最初のキーが型判別キーであることを確認
     std::string typeKey = parser.nextKey();
     if (typeKey != jsonKey) {
         throw std::runtime_error(
@@ -120,7 +172,6 @@ Ptr readPolymorphicInstance(JsonParser& parser,
             "' key for polymorphic object, got '" + typeKey + "'");
     }
 
-    // 型名を読み取り、対応するファクトリを検索
     std::string typeName;
     parser.readTo(typeName);
     const auto* entry = entriesMap.findValue(typeName);
@@ -128,25 +179,11 @@ Ptr readPolymorphicInstance(JsonParser& parser,
         return nullptr;
     }
 
-    // ファクトリでインスタンスを生成
-    // factory だけの従来エントリでは既存の serializer() ベース動作を維持する。
-    // 外部 serializer エントリでは、同じく factory で生成してから登録済み
-    // ObjectSerializer でフィールドを読み込む。
-    auto instance = [&]() {
-        if constexpr (std::same_as<EntryValue, PolymorphicTypeFactory<Ptr>>) {
-            return (*entry)(&parser);
-        }
-        else {
-            return entry->factory(&parser);
-        }
-    }();
+    auto instance = entry->factory(&parser);
     using BaseType = typename PointerElementType<Ptr>::type;
-
-    // 外部 serializer エントリは serializer() を公開しない型向け。
-    // 従来パスは既存の polymorphic map の動作を保つため、基底オブジェクトの
-    // 仮想 serializer() を使う。
     BaseType* raw = getRawPointer(instance);
-    if constexpr (std::same_as<EntryValue, PolymorphicSerializerEntry<Ptr>>) {
+
+    if constexpr (std::same_as<Entry, PolymorphicSerializerEntry<Ptr>>) {
         entry->serializer.get().readFields(parser, raw);
     }
     else if constexpr (HasSerializer<BaseType>) {
@@ -165,103 +202,80 @@ Ptr readPolymorphicInstance(JsonParser& parser,
     return instance;
 }
 
-/// @brief ポリモーフィックオブジェクト1つ分を読み取るヘルパー関数（null許容版）。
-export template <typename Ptr, typename EntryValue = PolymorphicTypeFactory<Ptr>>
+/// @brief null を許容してポリモーフィックオブジェクトを 1 つ読み込む。
+/// @details 次のトークンが null なら nullptr を返し、それ以外は readPolymorphicInstance に委譲する。
+export template <typename Ptr, typename Entry, std::size_t N>
     requires IsPointerLike<Ptr>
 Ptr readPolymorphicInstanceOrNull(JsonParser& parser,
-    const collection::MapReference<std::string_view, EntryValue>& entriesMap,
+    const collection::SortedHashArrayMap<std::string_view, Entry, N>& entriesMap,
     std::string_view jsonKey) {
-    // null値の場合はnullptrを返す
     if (parser.nextIsNull()) {
         parser.skipValue();
         return nullptr;
     }
-    // オブジェクトの場合は通常の読み取り処理
     auto position = parser.nextPosition();
-    auto instance = readPolymorphicInstance<Ptr, EntryValue>(parser, entriesMap, jsonKey);
+    auto instance = readPolymorphicInstance<Ptr, Entry, N>(parser, entriesMap, jsonKey);
     if (instance == nullptr) {
          throw std::runtime_error("Unknown polymorphic type: " + std::to_string(position));
     }
     return instance;
 }
 
-// ヘルパ: entries マップを走査してオブジェクトの型名を取得します（ポリモーフィック書き出し時に使用）
-export template <typename BaseType, typename TypeNameMap>
-std::string getTypeNameFromMap(const BaseType& obj, const TypeNameMap& typeNames) {
-    const auto* typeName = typeNames.findValue(std::type_index(typeid(obj)));
-    if (typeName != nullptr) {
-        return std::string(*typeName);
-    }
-    throw std::runtime_error(std::string("Unknown polymorphic type: ") + typeid(obj).name());
-}
-
-template <typename BaseType, typename Ptr>
-std::string getTypeNameFromMap(const BaseType& obj,
-    collection::MapReference<std::string_view, PolymorphicSerializerEntry<Ptr>> entries) {
-    // 新方式のエントリは具象型を明示的に保持するため、書き込み時に
-    // typeid 比較用の一時オブジェクトを生成しなくてよい。
-    const std::type_index actualType{typeid(obj)};
-    for (const auto& it : entries) {
-        if (actualType == it.value.type) {
-            return std::string(it.key);
-        }
-    }
-    throw std::runtime_error(std::string("Unknown polymorphic type: ") + typeid(obj).name());
-}
-
-// PolymorphicConverter: ポインタ型（unique_ptr/shared_ptr/生ポインタ）に対して IsObjectConverter を満たすコンバータ
-export template <typename Ptr, typename EntryValue = PolymorphicTypeFactory<Ptr>,
-    typename TypeNameMap = PolymorphicTypeNameMap>
+/// @brief ポインタ風のポリモーフィック値を読み書きする converter。
+/// @details 読み込み用の「typeName -> entry」と、書き込み用の「具象型 -> typeName」の 2 つの SortedHashArrayMap を保持する。
+export template <typename Ptr, typename Entry, std::size_t N>
     requires IsPointerLike<Ptr>
 struct PolymorphicConverter {
     using Value = Ptr;
     using Element = typename PointerElementType<std::remove_cvref_t<Value>>::type;
-    using Key = std::string_view;
-    using Factory = PolymorphicTypeFactory<Ptr>;
-    using Entry = EntryValue;
-    using Map = collection::MapReference<Key, Entry>;
+    using EntriesMap = collection::SortedHashArrayMap<std::string_view, Entry, N>;
+    using TypeMap = collection::SortedHashArrayMap<
+        std::type_index, std::string_view, N, TypeIndexMapTraits>;
 
-    // Accept a MapReference-like object (SortedHashArrayMap is convertible)
-    template <typename Entries, typename TypeNames>
     explicit PolymorphicConverter(
-        const Entries& entries, TypeNames&& typeNames,
+        const std::array<Entry, N>& entries,
         const char* jsonKey = "type", bool allowNull = true)
-        : entries_(entries),
-          typeNames_(std::forward<TypeNames>(typeNames)),
+        : entries_(makePolymorphicEntriesMap(entries)),
+          typeNames_(makePolymorphicTypeMap(entries)),
           jsonKey_(jsonKey),
           allowNull_(allowNull) {}
 
+    /// @brief ポインタ風のポリモーフィック値を読み込む。
     void read(JsonParser& parser, Ptr& out) const {
         if (allowNull_) {
-            out = readPolymorphicInstanceOrNull<Ptr, Entry>(parser, entries_, jsonKey_);
+            out = readPolymorphicInstanceOrNull<Ptr, Entry, N>(parser, entries_, jsonKey_);
             return;
         }
-        out = readPolymorphicInstance<Ptr, Entry>(parser, entries_, jsonKey_);
+        out = readPolymorphicInstance<Ptr, Entry, N>(parser, entries_, jsonKey_);
     }
 
+    /// @brief ポインタ風のポリモーフィック値を書き出す。
+    /// @details factory は呼ばず、typeid(*ptr) と typeNames_ から JSON 上の型名を引く。
     void write(JsonWriter& writer, const Ptr& ptr) const {
         if (ptr == nullptr) {
             writer.null();
             return;
         }
+
+        const auto actualType = std::type_index(typeid(*ptr));
+        const auto* typeName = typeNames_.findValue(actualType);
+        if (typeName == nullptr) {
+            throw std::runtime_error(
+                std::string("Unknown polymorphic type: ") + typeid(*ptr).name());
+        }
+
         writer.startObject();
-        std::string typeName = getTypeNameFromMap(*ptr, typeNames_);
         writer.key(jsonKey_);
-        writer.writeObject(typeName);
+        writer.writeObject(std::string(*typeName));
+
         Element* raw = getRawPointer(ptr);
         if constexpr (std::same_as<Entry, PolymorphicSerializerEntry<Ptr>>) {
-            // 指し先オブジェクトに serializer() を要求せず、型に一致した
-            // 登録エントリの serializer を使う。
-            const auto actualType = std::type_index(typeid(*ptr));
-            for (const auto& it : entries_) {
-                if (actualType == it.value.type) {
-                    it.value.serializer.get().writeFields(writer, raw);
-                    writer.endObject();
-                    return;
-                }
+            const auto* entry = entries_.findValue(*typeName);
+            if (entry == nullptr) {
+                throw std::runtime_error(
+                    "PolymorphicConverter::write: serializer is not provided for polymorphic object");
             }
-            throw std::runtime_error(
-                "PolymorphicConverter::write: serializer is not provided for polymorphic object");
+            entry->serializer.get().writeFields(writer, raw);
         }
         else if constexpr (HasSerializer<Element>) {
             auto& fields = raw->serializer();
@@ -275,95 +289,31 @@ struct PolymorphicConverter {
     }
 
 private:
-    Map entries_{};
-    TypeNameMap typeNames_{};
+    /// @brief 読み込み時に JSON 上の型名から登録エントリを引く map。
+    EntriesMap entries_;
+    /// @brief 書き込み時に具象 C++ 型から JSON 上の型名を引く map。
+    TypeMap typeNames_;
+    /// @brief JSON 上の型判別フィールド名。
     const char* jsonKey_{};
+    /// @brief null を nullptr として扱うかどうか。
     bool allowNull_{true};
 };
 
-/// @brief ポリモーフィック型用のコンバータを構築して返す。
-/// @tparam Ptr ポインタ型（unique_ptr/shared_ptr/生ポインタ）
-/// @param entries 型名からファクトリ関数(PolymorphicTypeFactory<Ptr>)へのマップ
-/// @param jsonKey 型判別用のJSONキー名
-/// @param allowNull null許容かどうか
-export template <typename Ptr, typename Map>
+/// @brief ポインタ風のポリモーフィック値用 converter を作る。
+export template <typename Ptr, typename Entry, std::size_t N>
     requires IsPointerLike<Ptr>
 auto getPolymorphicConverter(
-    const Map& entries, const char* jsonKey = "type", bool allowNull = true) {
-    using EntryValue = PolymorphicMapEntryValue<Map>;
-    return PolymorphicConverter<Ptr, EntryValue>(
-        entries, makePolymorphicTypeNameMap(entries), jsonKey, allowNull);
-}
-
-/// @brief MapReference で渡された serializer() 持ち登録からポリモーフィック型用コンバータを構築する。
-export template <typename Ptr, typename Traits>
-    requires IsPointerLike<Ptr>
-auto getPolymorphicConverter(
-    const collection::MapReference<
-        std::string_view, PolymorphicTypeEntry<Ptr>, Traits>& entries,
+    const std::array<Entry, N>& entries,
     const char* jsonKey = "type", bool allowNull = true) {
-    return PolymorphicConverter<Ptr, PolymorphicTypeEntry<Ptr>>(
-        entries, makePolymorphicTypeNameMap(entries), jsonKey, allowNull);
+    return PolymorphicConverter<Ptr, Entry, N>(entries, jsonKey, allowNull);
 }
 
-/// @brief ポリモーフィック型用のコンバータを構築して返す。
-/// @tparam Ptr ポインタ型（unique_ptr/shared_ptr/生ポインタ）
-/// @param entries 型名から PolymorphicSerializerEntry<Ptr> へのマップ
-/// @param jsonKey 型判別用のJSONキー名
-/// @param allowNull null許容かどうか
-export template <typename Ptr, std::size_t N, typename Traits>
-    requires IsPointerLike<Ptr>
-auto getPolymorphicConverter(
-    const collection::SortedHashArrayMap<
-        std::string_view, PolymorphicSerializerEntry<Ptr>, N, Traits>& entries,
-    const char* jsonKey = "type", bool allowNull = true) {
-    // 値が ObjectSerializer を含む map 用の overload。
-    return PolymorphicConverter<Ptr, PolymorphicSerializerEntry<Ptr>>(
-        entries, makePolymorphicTypeNameMap(entries), jsonKey, allowNull);
-}
-
-/// @brief MapReference で渡された外部 serializer 登録からポリモーフィック型用コンバータを構築する。
-/// @tparam Ptr ポインタ型（unique_ptr/shared_ptr/生ポインタ）
-/// @param entries 型名から PolymorphicSerializerEntry<Ptr> への参照マップ
-/// @param jsonKey 型判別用のJSONキー名
-/// @param allowNull null許容かどうか
-export template <typename Ptr, typename Traits>
-    requires IsPointerLike<Ptr>
-auto getPolymorphicConverter(
-    const collection::MapReference<
-        std::string_view, PolymorphicSerializerEntry<Ptr>, Traits>& entries,
-    const char* jsonKey = "type", bool allowNull = true) {
-    // SortedHashArrayMap を保持しない呼び出し側にも同じ外部 serializer パスを提供する。
-    return PolymorphicConverter<Ptr, PolymorphicSerializerEntry<Ptr>>(
-        entries, makePolymorphicTypeNameMap(entries), jsonKey, allowNull);
-}
-
-/// @brief ポリモーフィックな配列用のコンバータを構築して返す。
-/// @tparam Container ポインタ要素を持つコンテナ型
-/// @param entries 型名からファクトリ関数へのマップ
-/// @param jsonKey 型判別用のJSONキー名
-/// @param allowNull null許容かどうか
-export template <typename Container, typename Map>
+/// @brief ポインタ風のポリモーフィック値を要素に持つコンテナ用 converter を作る。
+export template <typename Container, typename Entry, std::size_t N>
     requires IsContainer<Container>
     && IsPointerLike<std::remove_cvref_t<std::ranges::range_value_t<Container>>>
 auto getPolymorphicArrayConverter(
-    const Map& entries, const char* jsonKey = "type", bool allowNull = true) {
-    using ElementPtr = std::remove_cvref_t<std::ranges::range_value_t<Container>>;
-    const auto elementConverter =
-        getPolymorphicConverter<ElementPtr>(entries, jsonKey, allowNull);
-    using ElementConverter = std::remove_cvref_t<decltype(elementConverter)>;
-    return ContainerConverter<Container, ElementConverter>(elementConverter);
-}
-
-/// @brief MapReference で渡された serializer() 持ち登録を使うポリモーフィック配列用コンバータを構築する。
-export template <typename Container, typename Traits>
-    requires IsContainer<Container>
-    && IsPointerLike<std::remove_cvref_t<std::ranges::range_value_t<Container>>>
-auto getPolymorphicArrayConverter(
-    const collection::MapReference<
-        std::string_view,
-        PolymorphicTypeEntry<std::remove_cvref_t<std::ranges::range_value_t<Container>>>,
-        Traits>& entries,
+    const std::array<Entry, N>& entries,
     const char* jsonKey = "type", bool allowNull = true) {
     using ElementPtr = std::remove_cvref_t<std::ranges::range_value_t<Container>>;
     const auto elementConverter =
@@ -371,50 +321,6 @@ auto getPolymorphicArrayConverter(
     using ElementConverter = std::remove_cvref_t<decltype(elementConverter)>;
     return ContainerConverter<Container, ElementConverter>(elementConverter);
 }
-
-/// @brief 外部 serializer 登録を使うポリモーフィック配列用コンバータを構築して返す。
-/// @tparam Container ポインタ要素を持つコンテナ型
-/// @param entries 型名から要素ポインタ用 PolymorphicSerializerEntry へのマップ
-/// @param jsonKey 型判別用のJSONキー名
-/// @param allowNull null許容かどうか
-export template <typename Container, std::size_t N, typename Traits>
-    requires IsContainer<Container>
-    && IsPointerLike<std::remove_cvref_t<std::ranges::range_value_t<Container>>>
-auto getPolymorphicArrayConverter(
-    const collection::SortedHashArrayMap<
-        std::string_view,
-        PolymorphicSerializerEntry<std::remove_cvref_t<std::ranges::range_value_t<Container>>>,
-        N,
-        Traits>& entries,
-    const char* jsonKey = "type", bool allowNull = true) {
-    using ElementPtr = std::remove_cvref_t<std::ranges::range_value_t<Container>>;
-    const auto elementConverter =
-        getPolymorphicConverter<ElementPtr>(entries, jsonKey, allowNull);
-    using ElementConverter = std::remove_cvref_t<decltype(elementConverter)>;
-    return ContainerConverter<Container, ElementConverter>(elementConverter);
-}
-
-/// @brief MapReference で渡された外部 serializer 登録を使うポリモーフィック配列用コンバータを構築して返す。
-/// @tparam Container ポインタ要素を持つコンテナ型
-/// @param entries 型名から要素ポインタ用 PolymorphicSerializerEntry への参照マップ
-/// @param jsonKey 型判別用のJSONキー名
-/// @param allowNull null許容かどうか
-export template <typename Container, typename Traits>
-    requires IsContainer<Container>
-    && IsPointerLike<std::remove_cvref_t<std::ranges::range_value_t<Container>>>
-auto getPolymorphicArrayConverter(
-    const collection::MapReference<
-        std::string_view,
-        PolymorphicSerializerEntry<std::remove_cvref_t<std::ranges::range_value_t<Container>>>,
-        Traits>& entries,
-    const char* jsonKey = "type", bool allowNull = true) {
-    using ElementPtr = std::remove_cvref_t<std::ranges::range_value_t<Container>>;
-    const auto elementConverter =
-        getPolymorphicConverter<ElementPtr>(entries, jsonKey, allowNull);
-    using ElementConverter = std::remove_cvref_t<decltype(elementConverter)>;
-    return ContainerConverter<Container, ElementConverter>(elementConverter);
-}
-
 
 
 } // namespace rai::serialization

@@ -228,7 +228,7 @@ struct ContainerConverter {
 
 private:
     /// @brief 要素変換用コンバータへの参照
-    ElementConverterT elementConverter_{};
+    ElementConverterT elementConverter_;
 };
 
 /// @brief コンテナ型に対応する既定の ContainerConverter を返す。

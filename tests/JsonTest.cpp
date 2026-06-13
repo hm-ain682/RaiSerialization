@@ -13,7 +13,6 @@ import rai.collection.sorted_hash_array_map;
 #include <optional>
 #include <set>
 #include <utility>
-#include <typeindex>
 #include <type_traits>
 #include <map>
 #include <memory>
@@ -144,25 +143,22 @@ struct PFromFactoryContext : public PB {
     }
 };
 
-using PBPtr = std::unique_ptr<PB>;
-using MapEntry = std::pair<std::string_view, PolymorphicTypeEntry<PBPtr>>;
-
 // entries を直接マップ構築（配列を経由せず簡潔に記述）
-inline const auto pbEntriesMap = rai::collection::makeSortedHashArrayMap(
-    MapEntry{ "One", { std::type_index(typeid(POne)),
-        [](JsonParser*) -> PBPtr { return std::make_unique<POne>(); } } },
-    MapEntry{ "Two", { std::type_index(typeid(PTwo)),
-        [](JsonParser*) -> PBPtr { return std::make_unique<PTwo>(); } } }
-);
+inline const auto pbEntriesMap = std::array{
+    makePolymorphicTypeEntry<POne>("One",
+        [](JsonParser*) -> std::unique_ptr<PB> { return std::make_unique<POne>(); }),
+    makePolymorphicTypeEntry<PTwo>("Two",
+        [](JsonParser*) -> std::unique_ptr<PB> { return std::make_unique<PTwo>(); })
+};
 
-inline const auto contextFactoryEntriesMap = rai::collection::makeSortedHashArrayMap(
-    MapEntry{ "FromContext", { std::type_index(typeid(PFromFactoryContext)),
-    [](JsonParser* parser) -> PBPtr {
+inline const auto contextFactoryEntriesMap = std::array{
+    makePolymorphicTypeEntry<PFromFactoryContext>("FromContext",
+    [](JsonParser* parser) -> std::unique_ptr<PB> {
         auto instance = std::make_unique<PFromFactoryContext>();
         instance->seeded = parser->context<PolymorphicFactorySeed>()->value;
         return instance;
-    } } }
-);
+    })
+};
 
 struct Holder {
     std::unique_ptr<PB> item;
@@ -268,14 +264,12 @@ private:
 };
 
 using NonStdPBPtr = NonStdOwningPtr<PB>;
-using NonStdMapEntry = std::pair<std::string_view, PolymorphicTypeEntry<NonStdPBPtr>>;
-
-inline const auto nonStdPbEntriesMap = rai::collection::makeSortedHashArrayMap(
-    NonStdMapEntry{ "One", { std::type_index(typeid(POne)),
-        [](JsonParser*) { return NonStdPBPtr(new POne()); } } },
-    NonStdMapEntry{ "Two", { std::type_index(typeid(PTwo)),
-        [](JsonParser*) { return NonStdPBPtr(new PTwo()); } } }
-);
+inline const auto nonStdPbEntriesMap = std::array{
+    makePolymorphicTypeEntry<POne>("One",
+        [](JsonParser*) { return NonStdPBPtr(new POne()); }),
+    makePolymorphicTypeEntry<PTwo>("Two",
+        [](JsonParser*) { return NonStdPBPtr(new PTwo()); })
+};
 
 struct NonStdPtrHolder {
     NonStdPBPtr item;
@@ -333,21 +327,14 @@ inline const auto externalTwoFields = getFieldSet(
 );
 
 using ExternalPtr = std::unique_ptr<ExternalPB>;
-using ExternalEntry = PolymorphicSerializerEntry<ExternalPtr>;
-using ExternalMapEntry = std::pair<std::string_view, ExternalEntry>;
-
-inline const auto externalEntriesMap = rai::collection::makeSortedHashArrayMap(
-    ExternalMapEntry{ "One", ExternalEntry{
-        std::type_index(typeid(ExternalOne)),
+inline const auto externalEntriesMap = std::array{
+    makePolymorphicSerializerEntry<ExternalOne>("One",
         [](JsonParser*) -> ExternalPtr { return std::make_unique<ExternalOne>(); },
-        externalOneFields
-    } },
-    ExternalMapEntry{ "Two", ExternalEntry{
-        std::type_index(typeid(ExternalTwo)),
+        externalOneFields),
+    makePolymorphicSerializerEntry<ExternalTwo>("Two",
         [](JsonParser*) -> ExternalPtr { return std::make_unique<ExternalTwo>(); },
-        externalTwoFields
-    } }
-);
+        externalTwoFields)
+};
 
 struct ExternalHolder {
     ExternalPtr item;
