@@ -497,13 +497,13 @@ struct MapPolymorphicTwo : MapPolymorphicBase {
 
 using MapPolymorphicPtr = std::unique_ptr<MapPolymorphicBase>;
 using MapPolymorphicEntry =
-    std::pair<std::string_view, std::function<MapPolymorphicPtr()>>;
+    std::pair<std::string_view, PolymorphicTypeFactory<MapPolymorphicPtr>>;
 
 inline const auto mapPolymorphicEntries = rai::collection::makeSortedHashArrayMap(
-    MapPolymorphicEntry{ "One", []() -> MapPolymorphicPtr {
+    MapPolymorphicEntry{ "One", [](JsonParser*) -> MapPolymorphicPtr {
         return std::make_unique<MapPolymorphicOne>();
     } },
-    MapPolymorphicEntry{ "Two", []() -> MapPolymorphicPtr {
+    MapPolymorphicEntry{ "Two", [](JsonParser*) -> MapPolymorphicPtr {
         return std::make_unique<MapPolymorphicTwo>();
     } }
 );

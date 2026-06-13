@@ -126,12 +126,38 @@ struct PTwo : public PB {
     }
 };
 
-using MapEntry = std::pair<std::string_view, std::function<std::unique_ptr<PB>()>>;
+struct PolymorphicFactorySeed {
+    int value = 0;
+};
+
+struct PFromFactoryContext : public PB {
+    int seeded = 0;
+
+    const ObjectSerializer& serializer() const override {
+        static const auto f = FieldsObjectSerializer<PFromFactoryContext>{};
+        return f;
+    }
+
+    bool operator==(const PB& other) const override {
+        auto* p = dynamic_cast<const PFromFactoryContext*>(&other);
+        return p != nullptr && seeded == p->seeded;
+    }
+};
+
+using MapEntry = std::pair<std::string_view, PolymorphicTypeFactory<std::unique_ptr<PB>>>;
 
 // entries を直接マップ構築（配列を経由せず簡潔に記述）
 inline const auto pbEntriesMap = rai::collection::makeSortedHashArrayMap(
-    MapEntry{ "One", []() { return std::make_unique<POne>(); } },
-    MapEntry{ "Two", []() { return std::make_unique<PTwo>(); } }
+    MapEntry{ "One", [](JsonParser*) { return std::make_unique<POne>(); } },
+    MapEntry{ "Two", [](JsonParser*) { return std::make_unique<PTwo>(); } }
+);
+
+inline const auto contextFactoryEntriesMap = rai::collection::makeSortedHashArrayMap(
+    MapEntry{ "FromContext", [](JsonParser* parser) -> std::unique_ptr<PB> {
+        auto instance = std::make_unique<PFromFactoryContext>();
+        instance->seeded = parser->context<PolymorphicFactorySeed>()->value;
+        return instance;
+    } }
 );
 
 struct Holder {
@@ -171,6 +197,19 @@ struct Holder {
             }
         }
         return true;
+    }
+};
+
+struct ContextFactoryHolder {
+    std::unique_ptr<PB> item;
+
+    const ObjectSerializer& serializer() const {
+        static const auto itemConverter = getPolymorphicConverter<decltype(item)>(
+            contextFactoryEntriesMap, "kind");
+        static const auto fields = getFieldSet(
+            getRequiredField(&ContextFactoryHolder::item, "item", itemConverter)
+        );
+        return fields;
     }
 };
 
@@ -225,11 +264,11 @@ private:
 };
 
 using NonStdPBPtr = NonStdOwningPtr<PB>;
-using NonStdMapEntry = std::pair<std::string_view, std::function<NonStdPBPtr()>>;
+using NonStdMapEntry = std::pair<std::string_view, PolymorphicTypeFactory<NonStdPBPtr>>;
 
 inline const auto nonStdPbEntriesMap = rai::collection::makeSortedHashArrayMap(
-    NonStdMapEntry{ "One", []() { return NonStdPBPtr(new POne()); } },
-    NonStdMapEntry{ "Two", []() { return NonStdPBPtr(new PTwo()); } }
+    NonStdMapEntry{ "One", [](JsonParser*) { return NonStdPBPtr(new POne()); } },
+    NonStdMapEntry{ "Two", [](JsonParser*) { return NonStdPBPtr(new PTwo()); } }
 );
 
 struct NonStdPtrHolder {
@@ -294,12 +333,12 @@ using ExternalMapEntry = std::pair<std::string_view, ExternalEntry>;
 inline const auto externalEntriesMap = rai::collection::makeSortedHashArrayMap(
     ExternalMapEntry{ "One", ExternalEntry{
         std::type_index(typeid(ExternalOne)),
-        []() -> ExternalPtr { return std::make_unique<ExternalOne>(); },
+        [](JsonParser*) -> ExternalPtr { return std::make_unique<ExternalOne>(); },
         externalOneFields
     } },
     ExternalMapEntry{ "Two", ExternalEntry{
         std::type_index(typeid(ExternalTwo)),
-        []() -> ExternalPtr { return std::make_unique<ExternalTwo>(); },
+        [](JsonParser*) -> ExternalPtr { return std::make_unique<ExternalTwo>(); },
         externalTwoFields
     } }
 );
@@ -985,6 +1024,15 @@ TEST(JsonObjectConverterTest, ConverterCanReadCallerContextFromParser) {
     ContextScaledHolder out;
     readJsonString("{value:14}", out, defaultFormatIssueSink(), scale);
     EXPECT_EQ(out.value, 42);
+}
+
+TEST(JsonObjectConverterTest, PolymorphicFactoryCanReadCallerContextFromParser) {
+    PolymorphicFactorySeed seed{123};
+    ContextFactoryHolder out;
+    readJsonString("{item:{kind:\"FromContext\"}}", out, defaultFormatIssueSink(), seed);
+    auto* item = dynamic_cast<PFromFactoryContext*>(out.item.get());
+    ASSERT_NE(item, nullptr);
+    EXPECT_EQ(item->seeded, 123);
 }
 
 // ********************************************************************************

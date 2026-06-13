@@ -401,10 +401,12 @@ struct Rectangle : public Shape {
     }
 };
 
-using MapEntry = std::pair<std::string_view, std::function<std::unique_ptr<Shape>()>>;
+using MapEntry = std::pair<
+    std::string_view,
+    rai::serialization::PolymorphicTypeFactory<std::unique_ptr<Shape>>>;
 inline const auto shapeEntriesMap = rai::collection::makeSortedHashArrayMap(
-    MapEntry{ "Circle",    []() { return std::make_unique<Circle>(); } },
-    MapEntry{ "Rectangle", []() { return std::make_unique<Rectangle>(); } }
+    MapEntry{ "Circle",    [](rai::serialization::JsonParser*) { return std::make_unique<Circle>(); } },
+    MapEntry{ "Rectangle", [](rai::serialization::JsonParser*) { return std::make_unique<Rectangle>(); } }
 );
 
 struct Drawing {
@@ -426,8 +428,17 @@ struct Drawing {
     }
 };
 
-> Note: Polymorphic converters accept an optional `allowNull` flag (default: `true`).
 ```
+
+> Note: Polymorphic converters accept an optional `allowNull` flag (default: `true`).
+> A `PolymorphicTypeFactory` receives `JsonParser*`, so the factory can read
+> caller-provided context with `parser.context<T>()`.
+>
+> ```cpp
+> MapEntry{ "PooledCircle", [](rai::serialization::JsonParser* parser) {
+>     return parser->context<MyPool>()->makeCircle();
+> } }
+> ```
 
 ### Polymorphic fields with external serializers
 If the polymorphic classes do not expose `serializer()`, register each concrete type with
@@ -464,12 +475,12 @@ using ShapeMapEntry = std::pair<std::string_view, ShapeEntry>;
 inline const auto shapeEntriesMap = rai::collection::makeSortedHashArrayMap(
     ShapeMapEntry{ "Circle", ShapeEntry{
         std::type_index(typeid(Circle)),
-        []() -> ShapePtr { return std::make_unique<Circle>(); },
+        [](rai::serialization::JsonParser*) -> ShapePtr { return std::make_unique<Circle>(); },
         circleFields
     } },
     ShapeMapEntry{ "Rectangle", ShapeEntry{
         std::type_index(typeid(Rectangle)),
-        []() -> ShapePtr { return std::make_unique<Rectangle>(); },
+        [](rai::serialization::JsonParser*) -> ShapePtr { return std::make_unique<Rectangle>(); },
         rectangleFields
     } }
 );

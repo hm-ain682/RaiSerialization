@@ -36,9 +36,10 @@ namespace rai::serialization {
 // ------------------------- Polymorphic helpers and fields -------------------------
 
 /// @brief ポリモーフィック型用のファクトリ関数型（ポインタ型を返す）。
+/// @param parser 読み込み中の JsonParser。書き込み時の型名逆引きでは nullptr。
 export template <typename Ptr>
     requires IsPointerLike<Ptr>
-using PolymorphicTypeFactory = std::function<Ptr()>;
+using PolymorphicTypeFactory = std::function<Ptr(JsonParser*)>;
 
 /// @brief serializer() を持たないポリモーフィック型を外部 ObjectSerializer で扱うための登録情報。
 /// @details type は書き込み時に実際の派生型から型タグを逆引きするために使う。
@@ -88,10 +89,10 @@ Ptr readPolymorphicInstance(JsonParser& parser,
     // ObjectSerializer でフィールドを読み込む。
     auto instance = [&]() {
         if constexpr (std::same_as<EntryValue, PolymorphicTypeFactory<Ptr>>) {
-            return (*entry)();
+            return (*entry)(&parser);
         }
         else {
-            return entry->factory();
+            return entry->factory(&parser);
         }
     }();
     using BaseType = typename PointerElementType<Ptr>::type;
@@ -143,7 +144,7 @@ Ptr readPolymorphicInstanceOrNull(JsonParser& parser,
 export template <typename BaseType, typename Map>
 std::string getTypeNameFromMap(const BaseType& obj, Map entries) {
     for (const auto& it : entries) {
-        auto testObj = it.value();
+        auto testObj = it.value(nullptr);
         if (typeid(obj) == typeid(*testObj)) {
             return std::string(it.key);
         }

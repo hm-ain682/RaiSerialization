@@ -124,8 +124,8 @@ using MapEntry = std::pair<std::string_view, PolymorphicTypeFactory<std::unique_
 
 // ポリモーフィック型エントリマップ（makeSortedHashArrayMapを使用）
 inline const auto baseNodeEntriesMap = rai::collection::makeSortedHashArrayMap(
-    MapEntry{ std::string_view("DataNode"), [](){ return std::make_unique<DataNode>(); }},
-    MapEntry{ std::string_view("ContainerNode"), [](){ return std::make_unique<ContainerNode>(); } }
+    MapEntry{ std::string_view("DataNode"), [](JsonParser*){ return std::make_unique<DataNode>(); }},
+    MapEntry{ std::string_view("ContainerNode"), [](JsonParser*){ return std::make_unique<ContainerNode>(); } }
 );
 
 
