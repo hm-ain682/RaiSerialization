@@ -449,13 +449,16 @@ struct PointerElementType<
 /// @brief pointer-like 型から実ポインタを取得する。
 /// @details smart pointer 風の型は get() を使い、生ポインタはそのまま返す。
 template <typename T>
+    requires std::is_pointer_v<std::remove_cvref_t<T>>
 constexpr auto getRawPointer(T& pointer) {
-    if constexpr (std::is_pointer_v<std::remove_cvref_t<T>>) {
-        return pointer;
-    }
-    else {
-        return pointer.get();
-    }
+    return pointer;
+}
+
+template <typename T>
+    requires (!std::is_pointer_v<std::remove_cvref_t<T>>)
+        && requires(T& pointer) { pointer.get(); }
+constexpr auto getRawPointer(T& pointer) {
+    return pointer.get();
 }
 
 /// @brief get() で実ポインタを取り出せる pointer-like 型かどうかを判定する。
