@@ -2,8 +2,12 @@
 // @brief JSON5パーサーの定義。トークン列からオブジェクトを構築する。
 
 module;
+#include <cassert>
 #include <stdexcept>
 #include <string>
+#ifndef NDEBUG
+#include <typeindex>
+#endif
 #include <type_traits>
 #include <variant>
 #include <vector>
@@ -18,6 +22,37 @@ export namespace rai::serialization {
 
 // ******************************************************************************** JsonParser
 // @brief JSON5パーサー（トークン列からオブジェクトを構築）
+class FormatContext {
+public:
+    FormatContext() = default;
+
+    FormatContext(const FormatContext&) = default;
+    FormatContext& operator=(const FormatContext&) = default;
+
+    template <typename T>
+        requires (!std::is_same_v<std::remove_cvref_t<T>, FormatContext>)
+    explicit FormatContext(T& value)
+        : ptr_(&value)
+#ifndef NDEBUG
+        , type_(typeid(std::remove_cvref_t<T>))
+#endif
+    {}
+
+    template <typename T>
+    T* get() const {
+#ifndef NDEBUG
+        assert(type_ == std::type_index(typeid(std::remove_cvref_t<T>)));
+#endif
+        return static_cast<T*>(ptr_);
+    }
+
+private:
+    void* ptr_{};
+#ifndef NDEBUG
+    std::type_index type_{typeid(void)};
+#endif
+};
+
 class JsonParser {
     // ******************************************************************************** トークン取得
 private:
@@ -33,7 +68,13 @@ private:
 public:
     // @brief コンストラクタ（トークン管理オブジェクトを指定）
     // @param tokenManager トークン管理オブジェクトの参照
-    explicit JsonParser(TokenManager& tokenManager) : tokenManager_(tokenManager) {}
+    explicit JsonParser(TokenManager& tokenManager, FormatContext context = {})
+        : tokenManager_(tokenManager), context_(context) {}
+
+    template <typename T>
+    T* context() const {
+        return context_.get<T>();
+    }
 
     // ******************************************************************************** トークン読み取り
 public:
@@ -394,6 +435,7 @@ private:
     // ******************************************************************************** メンバー変数
 private:
     TokenManager& tokenManager_;       ///< トークン管理オブジェクトの参照
+    FormatContext context_{};
     std::vector<std::string> unknownKeys_{};  ///< 未知キー記録（診断用）
 
 public:

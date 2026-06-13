@@ -172,6 +172,9 @@ Notes:
   `void write(FormatWriter&, const T&) const`, and `void read(FormatReader&, T&) const`.
   `read` writes into the supplied object instead of returning a value, so converters can
   deserialize non-copyable and non-movable types.
+- Advanced read helpers can pass caller-owned state to converters as a trailing argument;
+  retrieve it inside converters with `parser.context<State>()`. The context is a
+  non-owning pointer; in debug builds the requested type is checked.
 
 ## Using getMapConverter 🧩
 Use `getMapConverter<Map>(keyConverter, valueConverter)` when you want to

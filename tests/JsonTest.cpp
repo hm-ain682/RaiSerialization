@@ -946,6 +946,48 @@ TEST(JsonObjectConverterTest, ReadsNonMovableMemberThroughConverter) {
 }
 
 // ********************************************************************************
+// テストカテゴリ：FormatContext
+// ********************************************************************************
+
+struct ReadScale {
+    int factor = 1;
+};
+
+struct ContextScaledIntConverter {
+    using Value = int;
+
+    void write(FormatWriter& writer, const int& value) const {
+        writer.writeObject(value);
+    }
+
+    void read(FormatReader& parser, int& out) const {
+        int raw{};
+        parser.readTo(raw);
+        out = raw * parser.context<ReadScale>()->factor;
+    }
+};
+
+struct ContextScaledHolder {
+    int value = 0;
+
+    const ObjectSerializer& serializer() const {
+        static const ContextScaledIntConverter converter{};
+        static const auto fields = getFieldSet(
+            getRequiredField(&ContextScaledHolder::value, "value", converter)
+        );
+        return fields;
+    }
+};
+
+TEST(JsonObjectConverterTest, ConverterCanReadCallerContextFromParser) {
+    ReadScale scale{3};
+    ContextScaledHolder out;
+    std::vector<std::string> unknownKeysOut;
+    readJsonString("{value:14}", out, unknownKeysOut, scale);
+    EXPECT_EQ(out.value, 42);
+}
+
+// ********************************************************************************
 // テストカテゴリ：トークン種別ディスパッチフィールド
 // ********************************************************************************
 
