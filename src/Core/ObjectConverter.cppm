@@ -487,27 +487,23 @@ concept IsPointerLike = HasGetRawPointer<T>
 template <typename Ptr>
 struct DefaultPointerFactory {
     using Element = typename PointerElementType<Ptr>::type;
-
-    Ptr operator()(Element&& value) const
-        requires std::constructible_from<Ptr, Element*>
-    {
+    Ptr operator()(JsonParser& parser, Element&& value) const
+        requires std::constructible_from<Ptr, Element*> {
         return Ptr(new Element(std::move(value)));
     }
 };
 
 template <typename T, typename Deleter>
 struct DefaultPointerFactory<std::unique_ptr<T, Deleter>> {
-    std::unique_ptr<T, Deleter> operator()(T&& value) const
-        requires std::default_initializable<Deleter>
-    {
-        return std::unique_ptr<T, Deleter>(
-            new T(std::move(value)), Deleter{});
+    std::unique_ptr<T, Deleter> operator()(JsonParser& parser, T&& value) const
+        requires std::default_initializable<Deleter> {
+        return std::unique_ptr<T, Deleter>(new T(std::move(value)), Deleter{});
     }
 };
 
 template <typename T>
 struct DefaultPointerFactory<std::shared_ptr<T>> {
-    std::shared_ptr<T> operator()(T&& value) const {
+    std::shared_ptr<T> operator()(JsonParser& parser, T&& value) const {
         return std::make_shared<T>(std::move(value));
     }
 };
@@ -525,8 +521,8 @@ struct PointerConverter {
     static_assert(IsPointerLike<T>, "PointerConverter requires T to be a nullable pointer-like type");
     static_assert(IsObjectConverter<ElemConvT, Element>,
         "PointerConverter requires ElementConverter to be an ObjectConverter for element type");
-    static_assert(requires(const FactoryT& factory, Element&& element) {
-        { factory(std::move(element)) } -> std::same_as<T>;
+    static_assert(requires(const FactoryT& factory, JsonParser& parser, Element&& element) {
+        { factory(parser, std::move(element)) } -> std::same_as<T>;
     }, "PointerConverter requires PointerFactory to create T from Element&&");
 
     PointerConverter()
@@ -554,7 +550,7 @@ struct PointerConverter {
         }
         Element elem{};
         targetConverter_.get().read(parser, elem);
-        out = pointerFactory_(std::move(elem));
+        out = pointerFactory_(parser, std::move(elem));
     }
 
 private:

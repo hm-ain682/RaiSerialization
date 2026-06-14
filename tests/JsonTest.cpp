@@ -1434,7 +1434,7 @@ TEST(JsonElementConverterTest, CustomPointerUsesPointerConverterFactory) {
             static const auto pointerConverter =
                 getPointerConverter<decltype(item)>(
                     getConverter<RWElement>(),
-                    [](RWElement&& value) {
+                    [](JsonParser& parser, RWElement&& value) {
                         return NonStdOwningPtr<RWElement>(
                             new RWElement(std::move(value)));
                     });
