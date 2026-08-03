@@ -855,10 +855,11 @@ struct IntegerStringConverter {
     /// @brief JSON 文字列から整数値を読み込む。
     /// @param parser 読み込み元のParser。
     /// @return 読み込んだ整数値。
-    void read(FormatReader& parser, int& out) const {
+    std::size_t read(FormatReader& parser, int& out) const {
         std::string numberText;
         parser.readTo(numberText);
         out = std::stoi(numberText);
+        return parser.nextPosition();
     }
 };
 
@@ -955,8 +956,9 @@ struct NonMovableValueConverter {
         writer.writeObject(value.value);
     }
 
-    void read(FormatReader& parser, Value& out) const {
+    std::size_t read(FormatReader& parser, Value& out) const {
         parser.readTo(out.value);
+        return parser.nextPosition();
     }
 };
 
@@ -1000,10 +1002,11 @@ struct ContextScaledIntConverter {
         writer.writeObject(value);
     }
 
-    void read(FormatReader& parser, int& out) const {
+    std::size_t read(FormatReader& parser, int& out) const {
         int raw{};
         parser.readTo(raw);
         out = raw * parser.context<ReadScale>()->factor;
+        return parser.nextPosition();
     }
 };
 
@@ -1240,7 +1243,7 @@ struct CustomFormatType {
 
     /// @brief 既定フォーマットからの読み込み。
     /// @param parser FormatReaderの参照。
-    void read(FormatReader& parser) {
+    std::size_t read(FormatReader& parser) {
         parser.startObject();
         while (!parser.nextIsEndObject()) {
             auto key = parser.nextKey();
@@ -1253,6 +1256,7 @@ struct CustomFormatType {
             }
         }
         parser.endObject();
+        return parser.nextPosition();
     }
 
     /// @brief 同値判定。

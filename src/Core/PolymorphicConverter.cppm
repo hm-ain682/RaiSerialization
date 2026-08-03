@@ -241,12 +241,13 @@ struct PolymorphicConverter {
           allowNull_(allowNull) {}
 
     /// @brief ポインタ風のポリモーフィック値を読み込む。
-    void read(JsonParser& parser, Ptr& out) const {
+    std::size_t read(JsonParser& parser, Ptr& out) const {
         if (allowNull_) {
             out = readPolymorphicInstanceOrNull<Ptr, Entry, N>(parser, entries_, jsonKey_);
-            return;
+            return parser.nextPosition();
         }
         out = readPolymorphicInstance<Ptr, Entry, N>(parser, entries_, jsonKey_);
+        return parser.nextPosition();
     }
 
     /// @brief ポインタ風のポリモーフィック値を書き出す。

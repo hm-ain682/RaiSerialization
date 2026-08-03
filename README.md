@@ -169,7 +169,9 @@ int main() {
 Notes:
 - `getObjectSerializerConverter<T>(serializer)` is the preferred way to override nested object fields explicitly.
 - Explicit converters satisfy `IsObjectConverter` by defining `using Value = T`,
-  `void write(FormatWriter&, const T&) const`, and `void read(FormatReader&, T&) const`.
+  `void write(FormatWriter&, const T&) const`, and
+  `std::size_t read(FormatReader&, T&) const`. `read` returns the position of the
+  next token after the converted value.
   `read` writes into the supplied object instead of returning a value, so converters can
   deserialize non-copyable and non-movable types.
 - Advanced read helpers can pass caller-owned state to converters as a trailing argument;
@@ -491,7 +493,8 @@ Writing uses `typeid(*ptr)` to select the matching entry, so the pointed-to base
 
 ## Custom read/write methods (write / read) ✍️
 If you prefer full control, implement `void write(FormatWriter&) const` and
-`void read(FormatReader&)` on your type. These methods are also used automatically
+`std::size_t read(FormatReader&)` on your type. `read` returns the position of the
+next token after the converted value. These methods are also used automatically
 when such types are encountered inside `FieldSerializer`-driven structures.
 
 ```cpp
@@ -509,7 +512,7 @@ struct CustomData {
         writer.endObject();
     }
 
-    void read(rai::serialization::FormatReader& parser) {
+    std::size_t read(rai::serialization::FormatReader& parser) {
         parser.startObject();
         while (!parser.nextIsEndObject()) {
             auto key = parser.nextKey();
@@ -522,6 +525,7 @@ struct CustomData {
             }
         }
         parser.endObject();
+        return parser.nextPosition();
     }
 };
 ```

@@ -216,7 +216,7 @@ struct ContainerConverter {
     /// @brief JSON配列からコンテナを復元する。
     /// @param parser 入力JSONパーサ。
     /// @return 復元されたコンテナ。
-    void read(JsonParser& parser, Container& out) const {
+    std::size_t read(JsonParser& parser, Container& out) const {
         parser.startArray();
         while (!parser.nextIsEndArray()) {
             Element elem{};
@@ -224,6 +224,7 @@ struct ContainerConverter {
             insertContainerElement(out, std::move(elem));
         }
         parser.endArray();
+        return parser.nextPosition();
     }
 
 private:
@@ -292,7 +293,7 @@ public:
     }
 
     /// @brief JSON配列から配列を復元。
-    void read(FormatReader& parser, Value& out) const {
+    std::size_t read(FormatReader& parser, Value& out) const {
         parser.startArray();
         auto fields = parseFieldOrder(parser, serializer_);
 
@@ -302,6 +303,7 @@ public:
                 readObjectRow<Element>(parser, serializer_, fields));
         }
         parser.endArray();
+        return parser.nextPosition();
     }
 
 private:
@@ -361,7 +363,7 @@ struct MapConverter {
         writer.endArray();
     }
 
-    void read(FormatReader& parser, Value& out) const {
+    std::size_t read(FormatReader& parser, Value& out) const {
         parser.startArray();
         while (!parser.nextIsEndArray()) {
             parser.startArray();
@@ -376,6 +378,7 @@ struct MapConverter {
             insertContainerElement(out, std::make_pair(std::move(key), std::move(value)));
         }
         parser.endArray();
+        return parser.nextPosition();
     }
 
 private:
@@ -496,7 +499,7 @@ private:
     }
 
 public:
-    void read(FormatReader& parser, Value& out) const {
+    std::size_t read(FormatReader& parser, Value& out) const {
         parser.startArray();
 
         parser.startArray();
@@ -519,6 +522,7 @@ public:
         }
 
         parser.endArray();
+        return parser.nextPosition();
     }
 
 private:

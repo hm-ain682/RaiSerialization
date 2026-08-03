@@ -39,14 +39,14 @@ concept IsObjectConverter = std::is_class_v<Converter>
         converter.write(writer, value);
     }
     && requires(const Converter& converter, FormatReader& parser, Value& value) {
-        { converter.read(parser, value) } -> std::same_as<void>;
+        { converter.read(parser, value) } -> std::same_as<std::size_t>;
     };
 
 /// @brief readメソッドを持つ型を表すconcept。
 /// @tparam T 型。
 template <typename T>
 concept HasReadFormatCore = requires(T& obj, FormatReader& parser) {
-    { obj.read(parser) } -> std::same_as<void>;
+    { obj.read(parser) } -> std::same_as<std::size_t>;
 };
 
 /// @brief writeメソッドを持つ型を表すconcept。
@@ -111,8 +111,9 @@ struct FundamentalConverter {
         writer.writeObject(value);
     }
 
-    void read(JsonParser& parser, T& out) const {
+    std::size_t read(JsonParser& parser, T& out) const {
         parser.readTo(out);
+        return parser.nextPosition();
     }
 };
 
@@ -132,10 +133,11 @@ struct ObjectSerializerConverter {
         writer.endObject();
     }
 
-    void read(JsonParser& parser, Value& out) const {
+    std::size_t read(JsonParser& parser, Value& out) const {
         parser.startObject();
         serializer_.readFields(parser, static_cast<void*>(&out));
         parser.endObject();
+        return parser.nextPosition();
     }
 
 private:
@@ -171,11 +173,12 @@ struct SerializerConverter {
         writer.endObject();
     }
 
-    void read(FormatReader& parser, T& obj) const {
+    std::size_t read(FormatReader& parser, T& obj) const {
         parser.startObject();
         auto& fields = obj.serializer();
         fields.readFields(parser, static_cast<void*>(&obj));
         parser.endObject();
+        return parser.nextPosition();
     }
 };
 
@@ -199,8 +202,8 @@ struct ReadWriteFormatConverter {
     void write(FormatWriter& writer, const T& obj) const {
         obj.write(writer);
     }
-    void read(FormatReader& parser, T& out) const {
-        out.read(parser);
+    std::size_t read(FormatReader& parser, T& out) const {
+        return out.read(parser);
     }
 };
 
@@ -238,13 +241,13 @@ struct OptionalConverter {
     /// @brief JSONからoptional値を読み込む。
     /// @param parser 入力元パーサ。
     /// @return 読み込んだ optional 値。
-    void read(JsonParser& parser, T& out) const {
+    std::size_t read(JsonParser& parser, T& out) const {
         if (parser.nextIsNull()) {
             parser.skipValue();
             out.reset();
-            return;
+            return parser.nextPosition();
         }
-        elementConverter_.get().read(parser, out.emplace());
+        return elementConverter_.get().read(parser, out.emplace());
     }
 
 private:
@@ -398,12 +401,12 @@ struct EnumConverter {
         throw std::runtime_error("Failed to convert enum to string");
     }
 
-    void read(JsonParser& parser, Enum& out) const {
+    std::size_t read(JsonParser& parser, Enum& out) const {
         std::string jsonValue;
         parser.readTo(jsonValue);
         if (auto v = map_.fromName(jsonValue)) {
             out = *v;
-            return;
+            return parser.nextPosition();
         }
         throw std::runtime_error(std::string("Failed to convert string to enum: ") + jsonValue);
     }
@@ -542,15 +545,16 @@ struct PointerConverter {
         targetConverter_.get().write(writer, *ptr);
     }
 
-    void read(JsonParser& parser, T& out) const {
+    std::size_t read(JsonParser& parser, T& out) const {
         if (parser.nextIsNull()) {
             parser.skipValue();
             out = nullptr;
-            return;
+            return parser.nextPosition();
         }
         Element elem{};
         targetConverter_.get().read(parser, elem);
         out = pointerFactory_(parser, std::move(elem));
+        return parser.nextPosition();
     }
 
 private:
@@ -666,17 +670,18 @@ struct TokenDispatchConverter {
         : tokenConverter_(conv) {}
 
     /// @brief トークン種別に応じて適切な変換関数を呼び出して値を読み取る。
-    void read(JsonParser& parser, ValueType& out) const {
+    std::size_t read(JsonParser& parser, ValueType& out) const {
         switch (parser.nextTokenType()) {
-        case JsonTokenType::Null:        out = tokenConverter_.readNull(parser); return;
-        case JsonTokenType::Bool:        out = tokenConverter_.readBool(parser); return;
-        case JsonTokenType::Integer:     out = tokenConverter_.readInteger(parser); return;
-        case JsonTokenType::Number:      out = tokenConverter_.readNumber(parser); return;
-        case JsonTokenType::String:      out = tokenConverter_.readString(parser); return;
-        case JsonTokenType::StartObject: out = tokenConverter_.readStartObject(parser); return;
-        case JsonTokenType::StartArray:  out = tokenConverter_.readStartArray(parser); return;
+        case JsonTokenType::Null:        out = tokenConverter_.readNull(parser); break;
+        case JsonTokenType::Bool:        out = tokenConverter_.readBool(parser); break;
+        case JsonTokenType::Integer:     out = tokenConverter_.readInteger(parser); break;
+        case JsonTokenType::Number:      out = tokenConverter_.readNumber(parser); break;
+        case JsonTokenType::String:      out = tokenConverter_.readString(parser); break;
+        case JsonTokenType::StartObject: out = tokenConverter_.readStartObject(parser); break;
+        case JsonTokenType::StartArray:  out = tokenConverter_.readStartArray(parser); break;
         default: throw std::runtime_error("Unsupported token type");
         }
+        return parser.nextPosition();
     }
 
     /// @brief 値を JSON に書き出すための関数を呼び出す。
